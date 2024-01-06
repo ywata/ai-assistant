@@ -1,6 +1,8 @@
 use std::fs;
-use serde_yaml::{from_str, Value};
+use serde_yaml::{Value};
 use std::error::Error;
+use std::io;
+
 
 pub fn read_config(file_name:&String) -> Result<Value, Box<dyn Error>>{
     let contents = fs::read_to_string(file_name)?;
@@ -13,9 +15,6 @@ pub fn read_config(file_name:&String) -> Result<Value, Box<dyn Error>>{
         & value["openai"]["token"].is_string() {
         Ok(value)
     }else{
-        use std::error::Error;
-        use std::io;
-
         fn return_error() -> Result<Value, Box<dyn Error>> {
             let err = io::Error::new(io::ErrorKind::Other, "This is an error message");
             Err(Box::new(err))

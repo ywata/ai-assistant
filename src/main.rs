@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fs::read_to_string;
 
 pub mod yaml_config;
-use std::process::exit;
 
 use clap::Parser;
 #[derive(Parser, Debug)]
@@ -71,7 +70,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 
     loop{
-        let mut input = read_to_string(&args.input)?;
+        let input = read_to_string(&args.input)?;
 
         //create a message for the thread
         let message = CreateMessageRequestArgs::default()

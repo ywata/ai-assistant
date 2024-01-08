@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::{fs, io, path};
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 
 
 use chrono;
@@ -98,18 +98,15 @@ fn prepare_directory(dir: &str) -> io::Result<()>{
                 return Ok(());
             }
         },
-        _ => Ok(())
 
     }
 }
 
 
 fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
-    let mut path = path::Path::new(dir);
-    let file_ = path::Path::new(file);
+    let path = path::Path::new(dir);
     let path_buf = path.join(file);
 
-    println!("save_file:{:?}", &path_buf);
     let result = fs::write(path_buf, content);
 
     result
@@ -124,20 +121,20 @@ trait LlmInput {
 impl LlmInput for Commands {
     fn get_input(&self) -> io::Result<String> {
         match self {
-            Commands::AskAi{input, prompt, output_dir} => {
+            Commands::AskAi{input, ..} => {
                 fs::read_to_string(input)
             },
-            Commands::RunFs{input, prompt, output_dir} => {
+            Commands::RunFs{input, ..} => {
                 fs::read_to_string(input)
             },
         }
     }
     fn get_prompt(&self) -> io::Result<String> {
         match self {
-            Commands::AskAi{input,prompt, output_dir} => {
+            Commands::AskAi{prompt,..} => {
                 fs::read_to_string(prompt)
             },
-            Commands::RunFs{input, prompt, output_dir} => {
+            Commands::RunFs{prompt, ..} => {
                 fs::read_to_string(prompt)
             },
         }
@@ -145,10 +142,10 @@ impl LlmInput for Commands {
     fn get_output_dir(&self, dir:Option<&str>) -> Option<String>{
 
         let p = match self {
-            Commands::AskAi{input,prompt, output_dir} => {
+            Commands::AskAi{output_dir, ..} => {
                 output_dir.clone()
             },
-            Commands::RunFs{input, prompt, output_dir} => {
+            Commands::RunFs{output_dir, ..} => {
                 output_dir.clone()
             },
         };
@@ -178,7 +175,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let dir_name = &now.format("%Y%m%d-%H%M%S").to_string();
     let output_directory = args.command.get_output_dir(Some(dir_name)).ok_or(io::Error::new(ErrorKind::Other, "invalid file anme"))?;
 
-    let result_prepare_dir = prepare_directory(&output_directory)?;
+    prepare_directory(&output_directory)?;
 
     let config_content = fs::read_to_string(&args.yaml)?;
 
@@ -283,9 +280,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("--- Response: {}", &text);
                     println!("{:?}", &output_directory);
 
-                    if let Commands::AskAi{input, prompt, output_dir} = &args.command {
+                    if let Commands::AskAi{..} = &args.command {
                         save_file(&output_directory, "output.fs", &text)?;
-                    } else if let Commands::RunFs{input, prompt, output_dir} = &args.command {
+                    } else if let Commands::RunFs{..} = &args.command {
                         save_file(&output_directory, "output.fs", &text)?;
                     } else {
                         save_file(&output_directory, "output.fs", &text)?;

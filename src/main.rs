@@ -67,7 +67,7 @@ fn prepare_directory(dir: &String) -> io::Result<()>{
 }
 
 
-fn save_response(dir: &String, file: &String, content: &String) -> io::Result<()> {
+fn save_file(dir: &String, file: &String, content: &String) -> io::Result<()> {
     let mut path = path::Path::new(dir);
     let file_ = path::Path::new(file);
     let path_buf = path.join(file);
@@ -193,9 +193,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("--- Response: {}", &text);
                     println!("");
                     let now = chrono::Utc::now();
-                    save_response(&args.output_dir,
-                                  &now.format("%Y%m%d-%H%M%S").to_string(), &text)?
 
+                    save_file(&args.output_dir,
+                              &now.format("o-%Y%m%d-%H%M%S.txt").to_string(), &text)?;
+
+
+                    let mut combined_input = String::new();
+                    combined_input.push_str("### prompt\n");
+                    combined_input.push_str(&prompt);
+                    combined_input.push_str("### input\n");
+                    combined_input.push_str(&input);
+
+                    save_file(&args.output_dir, &now.format("i-%Y%m%d-%H%M%S.txt").to_string(), &combined_input)?;
 
                 }
                 RunStatus::Failed => {

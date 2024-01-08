@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::{fs, io, path};
 use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
 
 use chrono;
 
@@ -76,7 +78,7 @@ use async_openai::{
 };
 
 
-fn prepare_directory(dir: &String) -> io::Result<()>{
+fn prepare_directory(dir: &str) -> io::Result<()>{
     let path = path::Path::new(dir);
     if path.exists() {
         if path.is_dir() {
@@ -86,7 +88,7 @@ fn prepare_directory(dir: &String) -> io::Result<()>{
         }
     }
 
-    let result = fs::create_dir(dir);
+    let result = fs::create_dir(path);
     match result {
         Ok(_) => Ok(()),
         Err(err) => {
@@ -102,12 +104,12 @@ fn prepare_directory(dir: &String) -> io::Result<()>{
 }
 
 
-fn save_file(dir: &String, file: &String, content: &String) -> io::Result<()> {
+fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
     let mut path = path::Path::new(dir);
     let file_ = path::Path::new(file);
     let path_buf = path.join(file);
 
-
+    println!("save_file:{:?}", &path_buf);
     let result = fs::write(path_buf, content);
 
     result
@@ -116,20 +118,19 @@ fn save_file(dir: &String, file: &String, content: &String) -> io::Result<()> {
 trait LlmInput {
     fn get_input(&self) -> io::Result<String>;
     fn get_prompt(&self) -> io::Result<String>;
-    fn get_output_dir(&self) -> String;
+    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>;
 }
 
 impl LlmInput for Commands {
     fn get_input(&self) -> io::Result<String> {
         match self {
-            Commands::AskAi{input,prompt, output_dir} => {
+            Commands::AskAi{input, prompt, output_dir} => {
                 fs::read_to_string(input)
             },
             Commands::RunFs{input, prompt, output_dir} => {
                 fs::read_to_string(input)
             },
         }
-
     }
     fn get_prompt(&self) -> io::Result<String> {
         match self {
@@ -141,17 +142,26 @@ impl LlmInput for Commands {
             },
         }
     }
-    fn get_output_dir(&self) -> String {
-        match self {
+    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>{
+
+        let p = match self {
             Commands::AskAi{input,prompt, output_dir} => {
                 output_dir.clone()
             },
             Commands::RunFs{input, prompt, output_dir} => {
                 output_dir.clone()
             },
-        }
-    }
+        };
+        let mut path = PathBuf::from(p);
+        if let Some(child) = dir {
+            let child_name = PathBuf::from(&child);
+            path = path.join(child_name);
+        } else {
 
+        }
+
+        path.to_str().map(|s|s.to_string())
+    }
 }
 const TEMPLATE_YAML: &str = r#"
 token: Mandatory
@@ -164,8 +174,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let input = args.command.get_input()?;
     let prompt = args.command.get_prompt()?;
 
-    let output_dir = args.command.get_output_dir();
-    let result_prepare_dir = prepare_directory(&output_dir)?;
+    let now = chrono::Utc::now();
+    let dir_name = &now.format("%Y%m%d-%H%M%S").to_string();
+    let output_directory = args.command.get_output_dir(Some(dir_name)).ok_or(io::Error::new(ErrorKind::Other, "invalid file anme"))?;
+
+    let result_prepare_dir = prepare_directory(&output_directory)?;
 
     let config_content = fs::read_to_string(&args.yaml)?;
 
@@ -268,11 +281,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     };
                     //print the text
                     println!("--- Response: {}", &text);
-                    println!("");
-                    let now = chrono::Utc::now();
+                    println!("{:?}", &output_directory);
 
-                    save_file(&output_dir,
-                              &now.format("o-%Y%m%d-%H%M%S.txt").to_string(), &text)?;
+                    if let Commands::AskAi{input, prompt, output_dir} = &args.command {
+                        save_file(&output_directory, "output.fs", &text)?;
+                    } else if let Commands::RunFs{input, prompt, output_dir} = &args.command {
+                        save_file(&output_directory, "output.fs", &text)?;
+                    } else {
+                        save_file(&output_directory, "output.fs", &text)?;
+                    }
 
 
                     let mut combined_input = String::new();
@@ -281,7 +298,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     combined_input.push_str("### input\n");
                     combined_input.push_str(&input);
 
-                    save_file(&output_dir, &now.format("i-%Y%m%d-%H%M%S.txt").to_string(), &combined_input)?;
+                    save_file(&output_directory, "input.txt", &combined_input)?;
 
                 }
                 RunStatus::Failed => {

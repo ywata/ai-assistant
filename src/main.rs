@@ -4,8 +4,7 @@ use std::io::ErrorKind;
 
 use chrono;
 
-
-pub mod yaml_config;
+pub mod config;
 
 use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
@@ -154,6 +153,9 @@ impl LlmInput for Commands {
     }
 
 }
+const TEMPLATE_YAML: &str = r#"
+token: Mandatory
+"#;
 
 
 #[tokio::main]
@@ -165,9 +167,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let output_dir = args.command.get_output_dir();
     let result_prepare_dir = prepare_directory(&output_dir)?;
 
+    let config_content = fs::read_to_string(&args.yaml)?;
 
-    let config = yaml_config::read_config(&args.yaml)?;
-    let token = config[&args.key]["token"].as_str().unwrap();
+    let config = config::read_config(&args.key, &TEMPLATE_YAML.to_string(), &config_content)?;
+    let token = config["token"].as_str().unwrap();
     let oai_config: OpenAIConfig = OpenAIConfig::default()
         .with_api_key(token);
 

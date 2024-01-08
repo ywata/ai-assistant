@@ -1,5 +1,9 @@
 use std::error::Error;
-use std::fs;
+use std::{fs, io, path};
+use std::io::ErrorKind;
+
+use chrono;
+
 
 pub mod yaml_config;
 
@@ -22,6 +26,13 @@ struct Args {
     output_dir:String,
 }
 
+use thiserror::Error;
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("file already exists for the directory")]
+    FileExists(),
+}
+
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
             RunStatus, MessageContent, CreateAssistantRequestArgs},
@@ -30,16 +41,50 @@ use async_openai::{
 };
 
 
-fn prepare_directory(dir: &String) {
+fn prepare_directory(dir: &String) -> io::Result<()>{
+    let path = path::Path::new(dir);
+    if path.exists() {
+        if path.is_dir() {
+            return Ok(());
+        } else {
+            return Err(io::Error::new(ErrorKind::Other, "file already exists"));
+        }
+    }
 
+    let result = fs::create_dir(dir);
+    match result {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            if err.kind() != ErrorKind::AlreadyExists {
+                return Err(err);
+            } else {
+                return Ok(());
+            }
+        },
+        _ => Ok(())
+
+    }
 }
 
 
+fn save_response(dir: &String, file: &String, content: &String) -> io::Result<()> {
+    let mut path = path::Path::new(dir);
+    let file_ = path::Path::new(file);
+    let path_buf = path.join(file);
+
+
+    let result = fs::write(path_buf, content);
+
+    result
+}
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+
+
+    let result_prepare_dir = prepare_directory(&args.output_dir)?;
 
     let prompt = fs::read_to_string(&args.prompt)?;
     let input = fs::read_to_string(&args.input)?;
@@ -145,8 +190,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
                     };
                     //print the text
-                    println!("--- Response: {}", text);
+                    println!("--- Response: {}", &text);
                     println!("");
+                    let now = chrono::Utc::now();
+                    save_response(&args.output_dir,
+                                  &now.format("%Y%m%d-%H%M%S").to_string(), &text)?
+
 
                 }
                 RunStatus::Failed => {

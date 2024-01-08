@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fs::read_to_string;
+use std::fs;
 
 pub mod yaml_config;
 
@@ -30,13 +30,19 @@ use async_openai::{
 };
 
 
+fn prepare_directory(dir: &String) {
+
+}
+
+
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    let prompt = read_to_string(&args.prompt)?;
-    let input = read_to_string(&args.input)?;
+    let prompt = fs::read_to_string(&args.prompt)?;
+    let input = fs::read_to_string(&args.input)?;
 
     let config = yaml_config::read_config(&args.yaml)?;
     let token = config[&args.key]["token"].as_str().unwrap();
@@ -56,7 +62,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let assistant_name = args.name;
 
-    let instructions = read_to_string(&args.prompt)?;
+    let instructions = fs::read_to_string(&args.prompt)?;
 
     //create the assistant
     let assistant_request = CreateAssistantRequestArgs::default()
@@ -70,7 +76,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 
     loop{
-        let input = read_to_string(&args.input)?;
+        let input = fs::read_to_string(&args.input)?;
 
         //create a message for the thread
         let message = CreateMessageRequestArgs::default()

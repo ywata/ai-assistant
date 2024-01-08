@@ -7,24 +7,66 @@ use chrono;
 
 pub mod yaml_config;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct Cli {
     /// yaml file to store credentials
     #[arg(long)]
     yaml: String,
     #[arg(long)]
-    name: String,
-    #[arg(long)]
     key: String,
     #[arg(long)]
-    input: String,
-    #[arg(long)]
-    prompt: String,
-    #[arg(long)]
-    output_dir:String,
+    name: String,
+
+    #[clap(subcommand)]
+    command: Commands,
+    //#[arg(long)]
+    //input: String,
+    //#[arg(long)]
+    //prompt: String,
+    //#[arg(long)]
+    //output_dir:String,
 }
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    AskAi {
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        input: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        prompt: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        output_dir: String,
+    },
+    RunFs {
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        input: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        prompt: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        output_dir: String,
+    },
+}
+
 
 use thiserror::Error;
 #[derive(Error, Debug)]
@@ -78,23 +120,62 @@ fn save_file(dir: &String, file: &String, content: &String) -> io::Result<()> {
     result
 }
 
+trait LlmInput {
+    fn get_input(&self) -> io::Result<String>;
+    fn get_prompt(&self) -> io::Result<String>;
+    fn get_output_dir(&self) -> String;
+}
+
+impl LlmInput for Commands {
+    fn get_input(&self) -> io::Result<String> {
+        match self {
+            Commands::AskAi{input,prompt, output_dir} => {
+                fs::read_to_string(input)
+            },
+            Commands::RunFs{input, prompt, output_dir} => {
+                fs::read_to_string(input)
+            },
+        }
+
+    }
+    fn get_prompt(&self) -> io::Result<String> {
+        match self {
+            Commands::AskAi{input,prompt, output_dir} => {
+                fs::read_to_string(prompt)
+            },
+            Commands::RunFs{input, prompt, output_dir} => {
+                fs::read_to_string(prompt)
+            },
+        }
+    }
+    fn get_output_dir(&self) -> String {
+        match self {
+            Commands::AskAi{input,prompt, output_dir} => {
+                output_dir.clone()
+            },
+            Commands::RunFs{input, prompt, output_dir} => {
+                output_dir.clone()
+            },
+        }
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
+    let args = Cli::parse();
+    let input = args.command.get_input()?;
+    let prompt = args.command.get_prompt()?;
 
+    let output_dir = args.command.get_output_dir();
+    let result_prepare_dir = prepare_directory(&output_dir)?;
 
-    let result_prepare_dir = prepare_directory(&args.output_dir)?;
-
-    let prompt = fs::read_to_string(&args.prompt)?;
-    let input = fs::read_to_string(&args.input)?;
 
     let config = yaml_config::read_config(&args.yaml)?;
     let token = config[&args.key]["token"].as_str().unwrap();
     let oai_config: OpenAIConfig = OpenAIConfig::default()
         .with_api_key(token);
 
-    println!("{:?} {:?} {:?}", &args, &prompt, &input);
     // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
@@ -107,7 +188,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let assistant_name = args.name;
 
-    let instructions = fs::read_to_string(&args.prompt)?;
+    let instructions = prompt;
 
     //create the assistant
     let assistant_request = CreateAssistantRequestArgs::default()
@@ -121,8 +202,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 
     loop{
-        let input = fs::read_to_string(&args.input)?;
-
         //create a message for the thread
         let message = CreateMessageRequestArgs::default()
             .role("user")
@@ -194,17 +273,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("");
                     let now = chrono::Utc::now();
 
-                    save_file(&args.output_dir,
+                    save_file(&output_dir,
                               &now.format("o-%Y%m%d-%H%M%S.txt").to_string(), &text)?;
 
 
                     let mut combined_input = String::new();
                     combined_input.push_str("### prompt\n");
-                    combined_input.push_str(&prompt);
+                    combined_input.push_str(&instructions);
                     combined_input.push_str("### input\n");
                     combined_input.push_str(&input);
 
-                    save_file(&args.output_dir, &now.format("i-%Y%m%d-%H%M%S.txt").to_string(), &combined_input)?;
+                    save_file(&output_dir, &now.format("i-%Y%m%d-%H%M%S.txt").to_string(), &combined_input)?;
 
                 }
                 RunStatus::Failed => {

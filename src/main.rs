@@ -21,12 +21,6 @@ struct Cli {
 
     #[clap(subcommand)]
     command: Commands,
-    //#[arg(long)]
-    //input: String,
-    //#[arg(long)]
-    //prompt: String,
-    //#[arg(long)]
-    //output_dir:String,
 }
 
 #[derive(Debug, Subcommand)]
@@ -158,6 +152,7 @@ impl LlmInput for Commands {
             },
         }
     }
+
 }
 
 

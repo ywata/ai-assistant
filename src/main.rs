@@ -3,7 +3,7 @@ use std::{fs, io, path};
 use std::io::ErrorKind;
 use std::path::{PathBuf};
 
-
+use thiserror::Error;
 use chrono;
 
 pub mod config;
@@ -63,7 +63,7 @@ enum Commands {
 }
 
 
-use thiserror::Error;
+
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("file already exists for the directory")]
@@ -161,7 +161,9 @@ impl LlmInput for Commands {
     }
 }
 const TEMPLATE_YAML: &str = r#"
-token: Mandatory
+openai:
+  token: Mandatory
+  password: Optional
 "#;
 
 

@@ -1,10 +1,21 @@
 use std::str::FromStr;
-use serde_yaml::{Value, Mapping};
 use std::error::Error;
-use std::io;
-use std::io::ErrorKind;
+use std::env;
 use strum_macros::{Display, EnumIter, EnumString};
-use std::collections::HashMap;
+use serde_yaml::{Value, Mapping};
+use thiserror::Error;
+use crate::config::ConfigError::{EnvNotFound, UnexpectedKey};
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("unexpected entry in template")]
+    UnexpectedKey,
+    #[error("mandatory item missing")]
+    MissingMandatoryKey,
+    #[error("no enviroment variable found")]
+    EnvNotFound,
+}
+
 
 #[derive( Display, EnumIter, EnumString, PartialEq, Debug)]
 pub enum Enforce {
@@ -13,53 +24,68 @@ pub enum Enforce {
 }
 
 
-fn config_template(content: &String) -> Result<HashMap<String, Enforce>, Box<dyn Error>> {
-    let mut template = HashMap::new();
-    let yaml_data: HashMap<String, String> = serde_yaml::from_str(content)?;
-    for (key, value) in yaml_data.iter() {
-        let val = Enforce::from_str(value)?;
-        template.insert(key.clone(), val);
-    }
+pub fn read_config(key:&String, template:&String, contents: &String) -> Result<Mapping, Box<dyn Error>>{
+    let config_value: Value = serde_yaml::from_str(&contents)?;
+    let templ_value : Value = serde_yaml::from_str(&template)?;
 
-    Ok(template)
+    if let (Some(Some(vmap)), Some(Some(tmap)))
+        = (config_value.get(key).map(|v|v.as_mapping()),templ_value.get(key).map(|v|v.as_mapping())) {
+        for (k, enforced) in  tmap {
+            let enforce_level = enforced.as_str().map(|v| Enforce::from_str(v));
+            let enforce_level = match enforce_level {
+                Some(Ok(Enforce::Mandatory)) => {
+                    if vmap.get(k).is_none() {
+                        return Err(Box::new(UnexpectedKey));
+                    }
+                },
+                Some(Ok(Enforce::Optional)) => {
+                    // Nothing need to be done here
+                },
+                None | Some(Err(_)) => {
+                    return Err(Box::new(UnexpectedKey));
+                },
+            };
+        }
+        return Ok(vmap.clone());
+    }
+    Err(Box::new(UnexpectedKey))
 }
 
-fn parse_template<'a>(content:&'a Mapping, template:&HashMap<String, Enforce>) -> Result<&'a Mapping, Box<dyn Error>> {
-    for (key, value) in template.iter() {
-        match value {
-            Enforce::Mandatory => {
-                if ! content.contains_key(key) {
-                    let err = io::Error::new(ErrorKind::Other, "missing mandatory item");
-                    let err_box = Box::new(err);
-                    return Err(err_box);
-                }
-            },
-            Enforce::Optional => (),
+pub fn read_env_config(key:&String, template:&String) -> Result<Mapping, Box<dyn Error>> {
+    let templ_value : Value = serde_yaml::from_str(&template)?;
+    let mut key_ = key.clone();
+    key_.to_ascii_uppercase();
+    let mut mapping = Mapping::new();
+    if let Some(Some(tmap)) = templ_value.get(key).map(|v|v.as_mapping()) {
+        for (k, enforced) in  tmap {
+            let enforce_level = enforced.as_str().map(|v| Enforce::from_str(v));
+            match enforce_level {
+                Some(Ok(Enforce::Mandatory)) => {
+                    let mut env_var = key_.clone();
+                    let k_str = k.as_str()
+                        .map(|s|{env_var.push_str(&s.to_string().to_ascii_uppercase()); env_var})
+                        .ok_or(Box::new(UnexpectedKey))
+                        .and_then(|name|env::var(name).map_err(|_| Box::new(EnvNotFound)))?;
+                    mapping.insert(k.clone(), Value::String(k_str));
+                },
+                Some(Ok(Enforce::Optional)) => {
+                    let mut env_var = key_.clone();
+                    let k_str = k.as_str()
+                        .map(|s|{env_var.push_str(&s.to_string().to_ascii_uppercase()); env_var})
+                        .ok_or(Box::new(UnexpectedKey))
+                        .and_then(|name|env::var(name).map_err(|_| Box::new(EnvNotFound)));
+                    if k_str.is_ok() {
+                        mapping.insert(k.clone(), Value::String(k_str.unwrap()));
+                    }
+                },
+                None | Some(Err(_)) => {
+                    return Err(Box::new(UnexpectedKey));
+                },
+            }
         }
     }
-    Ok(content)
+    Ok(mapping)
 }
-
-pub fn read_config(key:&String, template:&String, contents:&String) -> Result<Mapping, Box<dyn Error>>{
-    let value: Value = serde_yaml::from_str(&contents)?;
-    let templ = config_template(template)?;
-
-
-    let key_ = key.clone();
-    if value.is_mapping()
-        & value.as_mapping().unwrap().contains_key(&key_)
-        & value[&key_].is_mapping() {
-        let result = parse_template(value[&key_].as_mapping().unwrap(), &templ)?;
-        Ok(result.clone())
-    }else{
-        fn return_error() -> Result<Mapping, Box<dyn Error>> {
-            let err = io::Error::new(io::ErrorKind::Other, "This is an error message");
-            Err(Box::new(err))
-        }
-        return_error()
-    }
-}
-
 
 #[cfg(test)]
 mod test{

@@ -9,7 +9,7 @@ use chrono;
 pub mod config;
 
 use clap::{Parser, Subcommand};
-
+use serde::{Serialize, Deserialize};
 
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
@@ -80,6 +80,11 @@ pub enum AppError {
 }
 
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum OpenAi{
+    Token{token: String},
+}
+
 
 fn prepare_directory(dir: &str) -> io::Result<()>{
     let path = path::Path::new(dir);
@@ -104,6 +109,8 @@ fn prepare_directory(dir: &str) -> io::Result<()>{
 
     }
 }
+
+
 
 
 fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
@@ -163,11 +170,20 @@ impl LlmInput for Commands {
         path.to_str().map(|s|s.to_string())
     }
 }
-const TEMPLATE_YAML: &str = r#"
-openai:
-  token: Mandatory
-  password: Optional
-"#;
+
+fn setup_openai_config(config:OpenAi) -> Client<OpenAIConfig>{
+    match config {
+        OpenAi::Token{token} => {
+            let token = token.as_str();
+            let oai_config: OpenAIConfig = OpenAIConfig::default()
+                .with_api_key(token);
+
+            //create a client
+            let client = Client::with_config(oai_config);
+            return client;
+        }
+    }
+}
 
 
 #[tokio::main]
@@ -184,16 +200,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config_content = fs::read_to_string(&args.yaml)?;
 
-    let config = config::read_config(&args.key, &TEMPLATE_YAML.to_string(), &config_content)?;
-    let token = config["token"].as_str().unwrap();
-    let oai_config: OpenAIConfig = OpenAIConfig::default()
-        .with_api_key(token);
+    let config: OpenAi = config::read_config(&args.key, &config_content)?;
+    let client = setup_openai_config(config);
 
     // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
-    //create a client
-    let client = Client::with_config(oai_config);
 
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;

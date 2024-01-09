@@ -4,9 +4,12 @@ use std::env;
 use strum_macros::{Display, EnumIter, EnumString};
 use serde_yaml::{Value, Mapping};
 use thiserror::Error;
-use crate::config::ConfigError::{EnvNotFound, UnexpectedKey};
+use crate::config::ConfigError::{ConversionFailed, EnvNotFound, UnexpectedKey};
+use serde::{Serialize, Deserialize};
+use std::collections::BTreeMap;
+use std::fmt::Debug;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ConfigError {
     #[error("unexpected entry in template")]
     UnexpectedKey,
@@ -14,6 +17,8 @@ pub enum ConfigError {
     MissingMandatoryKey,
     #[error("no enviroment variable found")]
     EnvNotFound,
+    #[error("conversion failed")]
+    ConversionFailed,
 }
 
 
@@ -23,74 +28,86 @@ pub enum Enforce {
     Optional
 }
 
+pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
+    fn read_from_env(key:&String) -> Result<T, ConfigError>;
 
-pub fn read_config(key:&String, template:&String, contents: &String) -> Result<Mapping, Box<dyn Error>>{
-    let config_value: Value = serde_yaml::from_str(&contents)?;
-    let templ_value : Value = serde_yaml::from_str(&template)?;
-
-    if let (Some(Some(vmap)), Some(Some(tmap)))
-        = (config_value.get(key).map(|v|v.as_mapping()),templ_value.get(key).map(|v|v.as_mapping())) {
-        for (k, enforced) in  tmap {
-            let enforce_level = enforced.as_str().map(|v| Enforce::from_str(v));
-            let enforce_level = match enforce_level {
-                Some(Ok(Enforce::Mandatory)) => {
-                    if vmap.get(k).is_none() {
-                        return Err(Box::new(UnexpectedKey));
-                    }
-                },
-                Some(Ok(Enforce::Optional)) => {
-                    // Nothing need to be done here
-                },
-                None | Some(Err(_)) => {
-                    return Err(Box::new(UnexpectedKey));
-                },
-            };
-        }
-        return Ok(vmap.clone());
-    }
-    Err(Box::new(UnexpectedKey))
 }
 
-pub fn read_env_config(key:&String, template:&String) -> Result<Mapping, Box<dyn Error>> {
-    let templ_value : Value = serde_yaml::from_str(&template)?;
-    let mut key_ = key.clone();
-    key_.to_ascii_uppercase();
-    let mut mapping = Mapping::new();
-    if let Some(Some(tmap)) = templ_value.get(key).map(|v|v.as_mapping()) {
-        for (k, enforced) in  tmap {
-            let enforce_level = enforced.as_str().map(|v| Enforce::from_str(v));
-            match enforce_level {
-                Some(Ok(Enforce::Mandatory)) => {
-                    let mut env_var = key_.clone();
-                    let k_str = k.as_str()
-                        .map(|s|{env_var.push_str(&s.to_string().to_ascii_uppercase()); env_var})
-                        .ok_or(Box::new(UnexpectedKey))
-                        .and_then(|name|env::var(name).map_err(|_| Box::new(EnvNotFound)))?;
-                    mapping.insert(k.clone(), Value::String(k_str));
-                },
-                Some(Ok(Enforce::Optional)) => {
-                    let mut env_var = key_.clone();
-                    let k_str = k.as_str()
-                        .map(|s|{env_var.push_str(&s.to_string().to_ascii_uppercase()); env_var})
-                        .ok_or(Box::new(UnexpectedKey))
-                        .and_then(|name|env::var(name).map_err(|_| Box::new(EnvNotFound)));
-                    if k_str.is_ok() {
-                        mapping.insert(k.clone(), Value::String(k_str.unwrap()));
-                    }
-                },
-                None | Some(Err(_)) => {
-                    return Err(Box::new(UnexpectedKey));
-                },
-            }
-        }
-    }
-    Ok(mapping)
+pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:&String, yaml_string: &String) -> Result<T, ConfigError> {
+    let config: Result<BTreeMap<String, T>, ConfigError>
+        = serde_yaml::from_str(yaml_string).or_else(|_|Err(UnexpectedKey));
+    let map = config?;
+
+    map.get(key).cloned().ok_or(ConversionFailed)
 }
+
+
+pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:&String, contents: &String) -> Result<T, ConfigError>{
+    convert::<T>(key, contents)
+}
+
+pub fn get_env<T:for<'a>Deserialize<'a> + Clone>(key:&String, name: &String) -> Result<T, ConfigError> {
+    let mut env_name = String::from(key);
+    env_name.push('_');
+    env_name.push_str(name);
+    let env_var = env::var(env_name)
+        .or_else(|_|Err(EnvNotFound));
+    let result: Result<T, ConfigError>
+        = env_var.and_then(|str| serde_yaml::from_str(&str).or_else(|_|Err(UnexpectedKey)));
+    result
+}
+
+
 
 #[cfg(test)]
 mod test{
+    use super::*;
+    use serde::{Serialize, Deserialize};
     #[test]
-    fn test_read_config(){
-
+    fn test_convert(){
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+        enum TestConfig {
+            Tag1{user:String},
+            Tag2{email:String}
+        }
+        let input = r#"
+        key:
+           !Tag1
+           user: someone
+        "#.to_string();
+        let res = convert::<TestConfig>(&input, &"key".to_string());
+        assert_eq!(res, Ok(TestConfig::Tag1{user: "someone".to_string()}));
     }
+    #[test]
+    fn test_convert_fail(){
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+        enum TestConfig {
+            Tag1{user:String},
+            Tag2{email:String}
+        }
+        let input = r#"
+        keyword:
+           !Tag1
+           user: someone
+           password: asdfasdf
+        "#.to_string();
+        let res = convert::<TestConfig>(&input, &"key".to_string());
+        assert_eq!(res, Err(ConfigError::ConversionFailed));
+    }
+    #[test]
+    fn test_convert_yaml_fail(){
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+        enum TestConfig {
+            Tag1{user:String},
+            Tag2{email:String}
+        }
+        let input = r#"
+        key:
+           !Tag1
+           - user: someone
+        "#.to_string();
+        let res = convert::<TestConfig>(&input, &"key".to_string());
+        assert_eq!(res, Err(ConfigError::UnexpectedKey));
+    }
+
 }

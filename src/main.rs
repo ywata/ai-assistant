@@ -171,7 +171,7 @@ impl LlmInput for Commands {
     }
 }
 
-fn setup_openai_config(config:OpenAi) -> Client<OpenAIConfig>{
+fn create_opeai_client(config:OpenAi) -> Client<OpenAIConfig>{
     match config {
         OpenAi::Token{token} => {
             let token = token.as_str();
@@ -201,7 +201,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config_content = fs::read_to_string(&args.yaml)?;
 
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
-    let client = setup_openai_config(config);
+    let client = create_opeai_client(config);
 
     // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message

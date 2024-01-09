@@ -9,6 +9,15 @@ use chrono;
 pub mod config;
 
 use clap::{Parser, Subcommand};
+
+
+use async_openai::{
+    types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
+            RunStatus, MessageContent, CreateAssistantRequestArgs},
+    config::OpenAIConfig,
+    Client,
+};
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -70,12 +79,6 @@ pub enum AppError {
     FileExists(),
 }
 
-use async_openai::{
-    types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
-            RunStatus, MessageContent, CreateAssistantRequestArgs},
-    config::OpenAIConfig,
-    Client,
-};
 
 
 fn prepare_directory(dir: &str) -> io::Result<()>{

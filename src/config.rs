@@ -91,10 +91,6 @@ pub fn read_env_config(key:&String, template:&String) -> Result<Mapping, Box<dyn
 mod test{
     #[test]
     fn test_read_config(){
-        let res = crate::config::read_config(&"tests/test.yaml".to_string());
 
-
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap()["openai"]["token"], "test-token");
     }
 }

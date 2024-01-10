@@ -277,7 +277,6 @@ fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
-    println!("{:?}", &args);
 
     let input = args.command.get_input()?;
     let prompt = args.command.get_prompt()?;

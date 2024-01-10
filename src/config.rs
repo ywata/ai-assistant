@@ -1,7 +1,7 @@
 use std::env;
 use strum_macros::{Display, EnumIter, EnumString};
 use thiserror::Error;
-use crate::config::ConfigError::{ConversionFailed, EnvNotFound, MissingMandatoryKey, UnexpectedKey};
+use crate::config::ConfigError::{ConversionFailed, EnvNotFound, UnexpectedKey};
 use serde::{Deserialize};
 use std::collections::BTreeMap;
 use std::fmt::Debug;

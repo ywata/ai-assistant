@@ -200,7 +200,6 @@ fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
     let max = source.len();
     let mut result = Vec::new();
 
-    println!("split_code():");
     for marker in markers {
         if let Some(pos) = source[curr_pos..max].find(marker.as_str()) {
             if 0 != pos {
@@ -209,10 +208,11 @@ fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
             }
             // Only marker exists from start.
             result.push(Mark::Marker{text: &source[curr_pos..(curr_pos + marker.len())]});
+            curr_pos = curr_pos + marker.len();
         } else {
             // not marker found. This might be a error.
         }
-        curr_pos = curr_pos + marker.len();
+
     }
     if curr_pos < max {
         result.push(Mark::Content{text: &source[curr_pos..max]});
@@ -250,6 +250,8 @@ fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<Stri
         save_file(dir, file, text);
     } else {
         let contents = split_code(text, markers.as_ref().unwrap());
+        println!("{:?}", contents);
+
         let mut mark_found = false;
         for c in contents {
             match c {
@@ -427,6 +429,18 @@ mod test {
         assert_eq!(res.get(1), Some(&Mark::Content{text:"\n"}));
         assert_eq!(res.get(2), Some(&Mark::Marker{text:"```"}));
     }
+    #[test]
+    fn test_split_mark_backquotes() {
+        let input = r#"```start
+asdf
+```"#.to_string();
+        let markers = vec!["```start```".to_string()];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start\nasdf\n```"}));
+    }
+
     #[test]
     fn test_split_mark_and_content() {
         let input = r#"asdf

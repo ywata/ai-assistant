@@ -185,6 +185,36 @@ fn create_opeai_client(config:OpenAi) -> Client<OpenAIConfig>{
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum Mark<'a> {
+    Marker{text: &'a str},
+    Content{text: &'a str},
+}
+
+fn split_code<'a>(source:&'a str, markers:&Vec<&'a str>) -> Vec<Mark<'a>> {
+    let mut curr_pos:usize = 0;
+    let max = source.len();
+    let mut result = Vec::new();
+
+    println!("split_code():");
+    for marker in markers {
+        if let Some(pos) = source[curr_pos..max].find(marker) {
+            if 0 != pos {
+                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)]});
+                curr_pos += pos;
+            }
+            // Only marker exists from start.
+            result.push(Mark::Marker{text: &source[curr_pos..(curr_pos + marker.len())]});
+        } else {
+            // not marker found. This might be a error.
+        }
+        curr_pos = curr_pos + marker.len();
+    }
+    if curr_pos < max {
+        result.push(Mark::Content{text: &source[curr_pos..max]});
+    }
+    result
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -199,20 +229,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     prepare_directory(&output_directory)?;
 
     let config_content = fs::read_to_string(&args.yaml)?;
-
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let client = create_opeai_client(config);
 
     // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
-
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
     let thread = client.threads().create(thread_request.clone()).await?;
 
     let assistant_name = args.name;
-
     let instructions = prompt;
 
     //create the assistant
@@ -298,7 +325,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("{:?}", &output_directory);
 
                     if let Commands::AskAi{..} = &args.command {
-                        save_file(&output_directory, "output.fs", &text)?;
+                        let v = vec!["```fsharp", "```"];
+                        let contents = split_code(&text, &v);
+                        let mut mark_found = false;
+                        for c in contents {
+                            match c {
+                                Mark::Marker{text} => mark_found = true,
+                                Mark::Content{text} => {
+                                    save_file(&output_directory, "output.fs", &text.to_string())?;
+                                    break;
+                                }
+
+                            }
+                        }
+
+
                     } else if let Commands::RunFs{..} = &args.command {
                         save_file(&output_directory, "output.fs", &text)?;
                     } else {
@@ -351,4 +392,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_split_mark_only() {
+        let input = r#"```start
+```"#.to_string();
+        let markers = vec!["```start", "```"];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start"}));
+        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n"}));
+        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```"}));
+    }
+    #[test]
+    fn test_split_mark_and_content() {
+        let input = r#"asdf
+```start
+hjklm
+```
+xyzw
+"#.to_string();
+        let markers = vec!["```start", "```"];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 5);
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n"}));
+        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start"}));
+        assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n"}));
+        assert_eq!(res.get(3), Some(&Mark::Marker{text:"```"}));
+        assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n"}));
+
+    }
 }

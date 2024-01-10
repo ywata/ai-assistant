@@ -1,12 +1,12 @@
 use std::env;
 use strum_macros::{Display, EnumIter, EnumString};
 use thiserror::Error;
-use crate::config::ConfigError::{ConversionFailed, EnvNotFound, UnexpectedKey};
+use crate::config::ConfigError::{ConversionFailed, EnvNotFound, MissingMandatoryKey, UnexpectedKey};
 use serde::{Deserialize};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Deserialize, Debug, PartialEq)]
 pub enum ConfigError {
     #[error("unexpected entry in template")]
     UnexpectedKey,
@@ -31,8 +31,8 @@ pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
 }
 
 pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:&String, yaml_string: &String) -> Result<T, ConfigError> {
-    let config: Result<BTreeMap<String, T>, ConfigError>
-        = serde_yaml::from_str(yaml_string).or_else(|_|Err(UnexpectedKey));
+    let config: Result<BTreeMap<String, T>, ConfigError> = serde_yaml::from_str(yaml_string)
+        .or_else(|_|Err(UnexpectedKey));
     let map = config?;
 
     map.get(key).cloned().ok_or(ConversionFailed)
@@ -61,11 +61,11 @@ mod test{
     use super::*;
     use serde::{Serialize, Deserialize};
     #[test]
-    fn test_convert(){
-        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+    fn test_convert() {
+        #[derive(Deserialize, Debug, Clone, PartialEq)]
         enum TestConfig {
             Tag1{user:String},
-            Tag2{email:String}
+            Tag2{email:String},
         }
         let input = r#"
         key:
@@ -76,7 +76,7 @@ mod test{
         assert_eq!(res, Ok(TestConfig::Tag1{user: "someone".to_string()}));
     }
     #[test]
-    fn test_convert_fail(){
+    fn test_convert_fail() {
         #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
         enum TestConfig {
             Tag1{user:String},
@@ -89,7 +89,7 @@ mod test{
            password: asdfasdf
         "#.to_string();
         let res = convert::<TestConfig>(&input, &"key".to_string());
-        assert_eq!(res, Err(ConfigError::ConversionFailed));
+        assert_eq!(res, Err(ConfigError::UnexpectedKey));
     }
     #[test]
     fn test_convert_yaml_fail(){

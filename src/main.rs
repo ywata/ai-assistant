@@ -265,6 +265,15 @@ fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<Stri
     }
 }
 
+fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) {
+    let mut combined_input = String::new();
+    for (tag, content) in inputs {
+        combined_input.push_str(tag);
+        combined_input.push_str(content);
+    }
+    save_file(dir, file, &combined_input);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
@@ -383,14 +392,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         save_file(&output_directory, "output.fs", &text)?;
                     }
 
-
-                    let mut combined_input = String::new();
-                    combined_input.push_str("### prompt\n");
-                    combined_input.push_str(&instructions);
-                    combined_input.push_str("### input\n");
-                    combined_input.push_str(&input);
-
-                    save_file(&output_directory, "input.txt", &combined_input)?;
+                    let input_pair = vec![("### prompt\n", &instructions), ("### input\n", &input)];
+                    save_input(&output_directory, &"input.txt".to_string(), &input_pair);
 
                 },
                 RunStatus::Failed => {

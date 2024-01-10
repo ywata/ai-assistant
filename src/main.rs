@@ -216,6 +216,31 @@ fn split_code<'a>(source:&'a str, markers:&Vec<&'a str>) -> Vec<Mark<'a>> {
     result
 }
 
+fn report_status(status: RunStatus) {
+    match status {
+        RunStatus::Queued => {
+            println!("--- Run Queued");
+        },
+        RunStatus::Cancelling => {
+            println!("--- Run Cancelling");
+        },
+        RunStatus::Cancelled => {
+            println!("--- Run Cancelled");
+        },
+        RunStatus::Expired => {
+            println!("--- Run Expired");
+        },
+        RunStatus::RequiresAction => {
+            println!("--- Run Requires Action");
+        },
+        RunStatus::InProgress => {
+            println!("--- Waiting for response...");
+        },
+        _ => panic!("should not reach here"),
+    }
+
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
@@ -251,7 +276,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let assistant = client.assistants().create(assistant_request).await?;
     //get the id of the assistant
     let assistant_id = &assistant.id;
-
 
     loop{
         //create a message for the thread
@@ -330,12 +354,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let mut mark_found = false;
                         for c in contents {
                             match c {
-                                Mark::Marker{text} => mark_found = true,
+                                Mark::Marker{text: _} => mark_found = true,
                                 Mark::Content{text} => {
                                     save_file(&output_directory, "output.fs", &text.to_string())?;
                                     break;
                                 }
-
                             }
                         }
 
@@ -355,30 +378,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     save_file(&output_directory, "input.txt", &combined_input)?;
 
-                }
+                },
                 RunStatus::Failed => {
                     awaiting_response = false;
                     println!("--- Run Failed: {:#?}", run);
                 }
-                RunStatus::Queued => {
-                    println!("--- Run Queued");
-                },
-                RunStatus::Cancelling => {
-                    println!("--- Run Cancelling");
-                },
-                RunStatus::Cancelled => {
-                    println!("--- Run Cancelled");
-                },
-                RunStatus::Expired => {
-                    println!("--- Run Expired");
-                },
-                RunStatus::RequiresAction => {
-
-                    println!("--- Run Requires Action");
-                },
-                RunStatus::InProgress => {
-                    println!("--- Waiting for response...");
-                }
+                otherwise => report_status(otherwise),
             }
             //wait for 1 second before checking the status again
             std::thread::sleep(std::time::Duration::from_secs(1));

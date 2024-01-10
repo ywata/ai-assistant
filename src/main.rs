@@ -195,7 +195,7 @@ enum Mark<'a> {
     Content{text: &'a str},
 }
 
-fn split_code<'a>(source:&'a str, markers:Vec<String>) -> Vec<Mark<'a>> {
+fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
     let mut curr_pos:usize = 0;
     let max = source.len();
     let mut result = Vec::new();
@@ -245,11 +245,21 @@ fn report_status(status: RunStatus) {
 
 }
 
-fn save_output(dir:&String, file:&String, text:&String, markers:Option<Vec<String>>) {
+fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) {
     if markers.is_none() {
         save_file(dir, file, text);
     } else {
-        let contents = split_code(text, markers.unwrap());
+        let contents = split_code(text, markers.as_ref().unwrap());
+        let mut mark_found = false;
+        for c in contents {
+            match c {
+                Mark::Marker{text: _} => mark_found = true,
+                Mark::Content{text} => {
+                    save_file(&dir, "output.fs", &text.to_string());
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -363,19 +373,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("--- Response: {}", &text);
                     println!("{:?}", &output_directory);
 
-                    if let Commands::AskAi{..} = &args.command {
-                        let v = vec!["```fsharp", "```"].into_iter().map(|s|s.to_string()).collect();
-                        let contents = split_code(&text, v);
-                        let mut mark_found = false;
-                        for c in contents {
-                            match c {
-                                Mark::Marker{text: _} => mark_found = true,
-                                Mark::Content{text} => {
-                                    save_file(&output_directory, "output.fs", &text.to_string())?;
-                                    break;
-                                }
-                            }
-                        }
+                    if let Commands::AskAi{markers, ..} = &args.command {
+                        save_output(&output_directory, &"output.fs".to_string(), &text, markers);
                     } else if let Commands::RunFs{..} = &args.command {
                         save_file(&output_directory, "output.fs", &text)?;
                     } else {
@@ -420,7 +419,7 @@ mod test {
     fn test_split_mark_only() {
         let input = r#"```start
 ```"#.to_string();
-        let markers = vec!["```start", "```"];
+        let markers = vec!["```start".to_string(), "```".to_string()];
 
         let res = split_code(&input, &markers);
         assert_eq!(res.len(), 3);
@@ -436,7 +435,7 @@ hjklm
 ```
 xyzw
 "#.to_string();
-        let markers = vec!["```start", "```"];
+        let markers = vec!["```start".to_string(), "```".to_string()];
 
         let res = split_code(&input, &markers);
         assert_eq!(res.len(), 5);

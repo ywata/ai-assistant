@@ -51,6 +51,8 @@ enum Commands {
         //arg_enum,
         )]
         output_dir: String,
+        #[arg(long)]
+        markers: Option<Vec<String>>
     },
     RunFs {
         #[clap(
@@ -68,6 +70,8 @@ enum Commands {
         //arg_enum,
         )]
         output_dir: String,
+        #[arg(long)]
+        markers: Option<Vec<String>>
     },
 }
 
@@ -191,14 +195,14 @@ enum Mark<'a> {
     Content{text: &'a str},
 }
 
-fn split_code<'a>(source:&'a str, markers:&Vec<&'a str>) -> Vec<Mark<'a>> {
+fn split_code<'a>(source:&'a str, markers:Vec<String>) -> Vec<Mark<'a>> {
     let mut curr_pos:usize = 0;
     let max = source.len();
     let mut result = Vec::new();
 
     println!("split_code():");
     for marker in markers {
-        if let Some(pos) = source[curr_pos..max].find(marker) {
+        if let Some(pos) = source[curr_pos..max].find(marker.as_str()) {
             if 0 != pos {
                 result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)]});
                 curr_pos += pos;
@@ -241,9 +245,19 @@ fn report_status(status: RunStatus) {
 
 }
 
+fn save_output(dir:&String, file:&String, text:&String, markers:Option<Vec<String>>) {
+    if markers.is_none() {
+        save_file(dir, file, text);
+    } else {
+        let contents = split_code(text, markers.unwrap());
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
+    println!("{:?}", &args);
+
     let input = args.command.get_input()?;
     let prompt = args.command.get_prompt()?;
 
@@ -276,6 +290,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let assistant = client.assistants().create(assistant_request).await?;
     //get the id of the assistant
     let assistant_id = &assistant.id;
+
 
     loop{
         //create a message for the thread
@@ -349,8 +364,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("{:?}", &output_directory);
 
                     if let Commands::AskAi{..} = &args.command {
-                        let v = vec!["```fsharp", "```"];
-                        let contents = split_code(&text, &v);
+                        let v = vec!["```fsharp", "```"].into_iter().map(|s|s.to_string()).collect();
+                        let contents = split_code(&text, v);
                         let mut mark_found = false;
                         for c in contents {
                             match c {
@@ -361,8 +376,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 }
                             }
                         }
-
-
                     } else if let Commands::RunFs{..} = &args.command {
                         save_file(&output_directory, "output.fs", &text)?;
                     } else {

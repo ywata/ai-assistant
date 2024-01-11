@@ -116,16 +116,6 @@ fn prepare_directory(dir: &str) -> io::Result<()>{
 
 
 
-
-fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
-    let path = path::Path::new(dir);
-    let path_buf = path.join(file);
-
-    let result = fs::write(path_buf, content);
-
-    result
-}
-
 trait LlmInput {
     fn get_input(&self) -> io::Result<String>;
     fn get_prompt(&self) -> io::Result<String>;
@@ -245,33 +235,44 @@ fn report_status(status: RunStatus) {
 
 }
 
-fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) {
+fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) -> io::Result<()> {
     if markers.is_none() {
-        save_file(dir, file, text);
+        save_file(dir, file, text)?;
     } else {
         let contents = split_code(text, markers.as_ref().unwrap());
-        println!("{:?}", contents);
 
         let mut mark_found = false;
         for c in contents {
             match c {
                 Mark::Marker{text: _} => mark_found = true,
                 Mark::Content{text} => {
-                    save_file(&dir, "output.fs", &text.to_string());
+                    save_file(&dir, "output.fs", &text.to_string())?;
                     break;
                 }
             }
         }
     }
+    Ok(())
 }
 
-fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) {
+
+fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
+    let path = path::Path::new(dir);
+    let path_buf = path.join(file);
+
+    let result = fs::write(path_buf, content);
+
+    result
+}
+
+
+fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> io::Result<()> {
     let mut combined_input = String::new();
     for (tag, content) in inputs {
         combined_input.push_str(tag);
         combined_input.push_str(content);
     }
-    save_file(dir, file, &combined_input);
+    save_file(dir, file, &combined_input)
 }
 
 #[tokio::main]
@@ -282,8 +283,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let prompt = args.command.get_prompt()?;
 
     let now = chrono::Utc::now();
-    let dir_name = &now.format("%Y%m%d-%H%M%S").to_string();
-    let output_directory = args.command.get_output_dir(Some(dir_name)).ok_or(io::Error::new(ErrorKind::Other, "invalid file anme"))?;
+    let dir_name = now.format("%Y%m%d-%H%M%S").to_string();
+    let output_directory = args.command.get_output_dir(Some(&dir_name)).ok_or(io::Error::new(ErrorKind::Other, "invalid file anme"))?;
 
     prepare_directory(&output_directory)?;
 
@@ -384,15 +385,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("{:?}", &output_directory);
 
                     if let Commands::AskAi{markers, ..} = &args.command {
-                        save_output(&output_directory, &"output.fs".to_string(), &text, markers);
-                    } else if let Commands::RunFs{..} = &args.command {
-                        save_file(&output_directory, "output.fs", &text)?;
+                        save_output(&output_directory, &"output.fs".to_string(), &text, markers)?;
+                    } else if let Commands::RunFs{markers, ..} = &args.command {
+                        save_output(&output_directory, &"output.fs".to_string(), &text, markers)?;
                     } else {
                         save_file(&output_directory, "output.fs", &text)?;
                     }
 
                     let input_pair = vec![("### prompt\n", &instructions), ("### input\n", &input)];
-                    save_input(&output_directory, &"input.txt".to_string(), &input_pair);
+                    save_input(&output_directory, &"input.txt".to_string(), &input_pair)?;
 
                 },
                 RunStatus::Failed => {

@@ -441,7 +441,7 @@ asdf
 
         let res = split_code(&input, &markers);
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start\nasdf\n```"}));
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```"}));
     }
 
     #[test]

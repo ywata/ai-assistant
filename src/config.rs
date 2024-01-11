@@ -72,7 +72,7 @@ mod test{
            !Tag1
            user: someone
         "#.to_string();
-        let res = convert::<TestConfig>(&input, &"key".to_string());
+        let res = convert::<TestConfig>(&"key".to_string(), &input);
         assert_eq!(res, Ok(TestConfig::Tag1{user: "someone".to_string()}));
     }
     #[test]
@@ -88,8 +88,8 @@ mod test{
            user: someone
            password: asdfasdf
         "#.to_string();
-        let res = convert::<TestConfig>(&input, &"key".to_string());
-        assert_eq!(res, Err(ConfigError::UnexpectedKey));
+        let res = convert::<TestConfig>(&"key".to_string(), &input);
+        assert_eq!(res, Err(ConfigError::ConversionFailed));
     }
     #[test]
     fn test_convert_yaml_fail(){
@@ -103,7 +103,7 @@ mod test{
            !Tag1
            - user: someone
         "#.to_string();
-        let res = convert::<TestConfig>(&input, &"key".to_string());
+        let res = convert::<TestConfig>(&"key".to_string(), &input);
         assert_eq!(res, Err(ConfigError::UnexpectedKey));
     }
 

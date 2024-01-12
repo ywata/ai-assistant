@@ -292,9 +292,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let client = create_opeai_client(config);
 
-    // Original code is from example/assistants/src/main.rs of async-openai
-    let query = [("limit", "1")]; //limit the list responses to 1 message
-
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
     let thread = client.threads().create(thread_request.clone()).await?;
@@ -312,6 +309,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //get the id of the assistant
     let assistant_id = &assistant.id;
 
+    // Original code is from example/assistants/src/main.rs of async-openai
+    let query = [("limit", "1")]; //limit the list responses to 1 message
 
     loop{
         //create a message for the thread

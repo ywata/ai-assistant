@@ -10,6 +10,10 @@ pub mod config;
 
 use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
+use openai_api::{
+    create_opeai_client,
+    setup_assistant,
+    OpenAi};
 
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
@@ -85,11 +89,6 @@ pub enum AppError {
     FileExists(),
 }
 
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-enum OpenAi{
-    Token{token: String},
-}
 
 
 fn prepare_directory(dir: &str) -> io::Result<()>{
@@ -167,39 +166,7 @@ impl LlmInput for Commands {
     }
 }
 
-fn create_opeai_client(config:OpenAi) -> Client<OpenAIConfig>{
-    match config {
-        OpenAi::Token{token} => {
-            let token = token.as_str();
-            let oai_config: OpenAIConfig = OpenAIConfig::default()
-                .with_api_key(token);
 
-            //create a client
-            let client = Client::with_config(oai_config);
-            return client;
-        }
-    }
-}
-
-async fn setup_assistant(args: &Cli, client: &Client<OpenAIConfig>, prompt:&String) -> Result<(ThreadObject, AssistantObject),Box<dyn Error>> {
-    //create a thread for the conversation
-    let thread_request = CreateThreadRequestArgs::default().build()?;
-    let thread = client.threads().create(thread_request.clone()).await?;
-
-    let assistant_name = &args.name;
-    let instructions = prompt;
-
-    //create the assistant
-    let assistant_request = CreateAssistantRequestArgs::default()
-        .name(assistant_name)
-        .instructions(instructions)
-        .model("gpt-3.5-turbo-1106")
-        .build()?;
-    let assistant = client.assistants().create(assistant_request).await?;
-    //get the id of the assistant
-
-    Ok((thread, assistant))
-}
 #[derive(Debug, PartialEq)]
 enum Mark<'a> {
     Marker{text: &'a str},
@@ -312,7 +279,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let client = create_opeai_client(config);
-    let (thread, assistant) = setup_assistant(&args, &client, &instructions).await?;
+    let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
     let assistant_id = &assistant.id;
 
     // Original code is from example/assistants/src/main.rs of async-openai

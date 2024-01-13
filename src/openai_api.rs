@@ -57,23 +57,6 @@ pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, promp
 
 pub async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&ThreadObject, assistant:&AssistantObject, output: Option<&dyn Fn(&String) -> Result<(), Box<dyn Error>>>) -> Result<(), Box<dyn Error>>
 {
-    /*let args = Cli::parse();
-
-    let input = args.command.get_input()?;
-    let instructions = args.command.get_prompt()?;
-
-    let now = chrono::Utc::now();
-    let dir_name = now.format("%Y%m%d-%H%M%S").to_string();
-    let output_directory = args.command.get_output_dir(Some(&dir_name)).ok_or(io::Error::new(ErrorKind::Other, "invalid file anme"))?;
-
-    prepare_directory(&output_directory)?;
-
-    let config_content = fs::read_to_string(&args.yaml)?;
-    let config: OpenAi = config::read_config(&args.key, &config_content)?;
-    let client = create_opeai_client(config);
-    let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
-*/
-    // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
     let assistant_id = &assistant.id;

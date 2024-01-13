@@ -15,10 +15,18 @@ serde_yaml = "0.9"
 strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
-tokio = { version = "1.28", features=["full"]}
+tokio = { version = "1.35", features=["full"]}
+rocket = "0.5.0"
 
 
+[lib]
+name = "openai_api"
+path = "src/openai_api.rs"
 
 [[bin]]
 name = "compile"
 path = "src/compile.rs"
+
+[[bin]]
+name = "rest"
+path = "src/rest-api.rs"

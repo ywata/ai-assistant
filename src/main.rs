@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
 use openai_api::{
     create_opeai_client,
+    report_status,
     setup_assistant,
     OpenAi};
 
@@ -198,30 +199,6 @@ fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
     result
 }
 
-fn report_status(status: RunStatus) {
-    match status {
-        RunStatus::Queued => {
-            println!("--- Run Queued");
-        },
-        RunStatus::Cancelling => {
-            println!("--- Run Cancelling");
-        },
-        RunStatus::Cancelled => {
-            println!("--- Run Cancelled");
-        },
-        RunStatus::Expired => {
-            println!("--- Run Expired");
-        },
-        RunStatus::RequiresAction => {
-            println!("--- Run Requires Action");
-        },
-        RunStatus::InProgress => {
-            println!("--- Waiting for response...");
-        },
-        _ => panic!("should not reach here"),
-    }
-
-}
 
 fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) -> io::Result<()> {
     if markers.is_none() {

@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
 use openai_api::{
     create_opeai_client,
+    main_action,
     report_status,
     setup_assistant,
     OpenAi};
@@ -258,9 +259,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = create_opeai_client(config);
     let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
     let assistant_id = &assistant.id;
-
-    // Original code is from example/assistants/src/main.rs of async-openai
     let query = [("limit", "1")]; //limit the list responses to 1 message
+    //main_action(config, &instructions, &client, &thread, &assistant, None);
+
 
     loop{
         //create a message for the thread

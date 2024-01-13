@@ -55,7 +55,7 @@ pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, promp
 
 
 
-async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&ThreadObject, assistant:&AssistantObject, output: &dyn Fn(&String) -> Result<(), Box<dyn Error>>) -> Result<(), Box<dyn Error>>
+pub async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&ThreadObject, assistant:&AssistantObject, output: Option<&dyn Fn(&String) -> Result<(), Box<dyn Error>>>) -> Result<(), Box<dyn Error>>
 {
     /*let args = Cli::parse();
 
@@ -147,8 +147,10 @@ async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&Thread
                 //print the text
                 println!("--- Response: {}", &text);
 
+                if output.is_some() {
+                    output.ok_or(&text);
+                }
 
-                output(&text);
             }
             RunStatus::Failed => {
                 awaiting_response = false;

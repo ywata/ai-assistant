@@ -17,6 +17,8 @@ use openai_api::{
     setup_assistant,
     OpenAi};
 
+use tokio::fs::write;
+
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
             RunStatus, MessageContent, CreateAssistantRequestArgs,
@@ -201,9 +203,9 @@ fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
 }
 
 
-fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) -> io::Result<()> {
+async fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<String>>) -> io::Result<()> {
     if markers.is_none() {
-        save_file(dir, file, text)?;
+        save_file(dir, file, text).await?
     } else {
         let contents = split_code(text, markers.as_ref().unwrap());
 
@@ -212,7 +214,7 @@ fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<Stri
             match c {
                 Mark::Marker{text: _} => mark_found = true,
                 Mark::Content{text} => {
-                    save_file(&dir, "output.fs", &text.to_string())?;
+                    save_file(&dir, "output.fs", &text.to_string()).await?;
                     break;
                 }
             }
@@ -222,24 +224,28 @@ fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Vec<Stri
 }
 
 
-fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
+async fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
     let path = path::Path::new(dir);
     let path_buf = path.join(file);
 
-    let result = fs::write(path_buf, content);
+    let result = tokio::fs::write(path_buf, content).await;
 
     result
 }
 
 
-fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> io::Result<()> {
+async fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> io::Result<()> {
+    println!("save_input()");
     let mut combined_input = String::new();
     for (tag, content) in inputs {
         combined_input.push_str(tag);
         combined_input.push_str(content);
     }
-    save_file(dir, file, &combined_input)
+    save_file(dir, file, &combined_input).await?;
+
+    Ok(())
 }
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -260,104 +266,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
     let assistant_id = &assistant.id;
     let query = [("limit", "1")]; //limit the list responses to 1 message
-    //main_action(config, &instructions, &client, &thread, &assistant, None);
-
-
-    loop{
-        //create a message for the thread
-        let message = CreateMessageRequestArgs::default()
-            .role("user")
-            .content(input.clone())
-            .build()?;
-
-        //attach message to the thread
-        let _message_obj = client
-            .threads()
-            .messages(&thread.id)
-            .create(message)
-            .await?;
-
-        //create a run for the thread
-        let run_request = CreateRunRequestArgs::default()
-            .assistant_id(assistant_id)
-            .build()?;
-        let run = client
-            .threads()
-            .runs(&thread.id)
-            .create(run_request)
-            .await?;
-
-        //wait for the run to complete
-        let mut awaiting_response = true;
-        while awaiting_response {
-            //retrieve the run
-            let run = client
-                .threads()
-                .runs(&thread.id)
-                .retrieve(&run.id)
-                .await?;
-            //check the status of the run
-            match run.status {
-                RunStatus::Completed => {
-                    awaiting_response = false;
-                    // once the run is completed we
-                    // get the response from the run
-                    // which will be the first message
-                    // in the thread
-
-                    //retrieve the response from the run
-                    let response = client
-                        .threads()
-                        .messages(&thread.id)
-                        .list(&query)
-                        .await?;
-                    //get the message id from the response
-                    let message_id = response
-                        .data.get(0).unwrap()
-                        .id.clone();
-                    //get the message from the response
-                    let message = client
-                        .threads()
-                        .messages(&thread.id)
-                        .retrieve(&message_id)
-                        .await?;
-                    //get the content from the message
-                    let content = message
-                        .content.get(0).unwrap();
-
-                    //get the text from the content
-                    let text = match content {
-                        MessageContent::Text(text) => text.text.value.clone(),
-                        MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
-                    };
-                    //print the text
-                    println!("--- Response: {}", &text);
-                    println!("{:?}", &output_directory);
-
-                    if let Commands::AskAi{markers, ..} = &args.command {
-                        save_output(&output_directory, &"output.fs".to_string(), &text, markers)?;
-                    } else if let Commands::RunFs{markers, ..} = &args.command {
-                        save_output(&output_directory, &"output.fs".to_string(), &text, markers)?;
-                    } else {
-                        save_file(&output_directory, "output.fs", &text)?;
-                    }
-
-                    let input_pair = vec![("### prompt\n", &instructions), ("### input\n", &input)];
-                    save_input(&output_directory, &"input.txt".to_string(), &input_pair)?;
-
-                },
-                RunStatus::Failed => {
-                    awaiting_response = false;
-                    println!("--- Run Failed: {:#?}", run);
-                }
-                otherwise => report_status(otherwise),
-            }
-            //wait for 1 second before checking the status again
-            std::thread::sleep(std::time::Duration::from_secs(1));
+    //async fn save(dir: &String, args:&Cli, instructions:&String, input:&String, text:&String) -> Result<(), Box<dyn Error>> {
+    async fn save(text:String, out_dir: String, instructions:String, input:String) -> Result<(), Box<dyn Error>> {
+        println!("###### {:?}", &out_dir);
+        let inputs = vec![("### prompt", &instructions), ("### input", &input)];
+        save_input(&out_dir, &"input.txt".to_string(), &inputs).await?;
+/*
+        if let Commands::AskAi{markers, ..} = &args.command {
+            save_output(&output_directory, &"output.fs".to_string(), &text, markers).await?;
+        } else if let Commands::RunFs{markers, ..} = &args.command {
+            save_output(&output_directory, &"output.fs".to_string(), &text, markers).await?;
+        } else {
+            save_file(&output_directory, "output.fs", &text).await?;
         }
-        break;
+        */
+
+        Ok(())
     }
 
+    main_action(&client, &thread, &assistant, &input,
+                |text| save(text, output_directory.clone(), instructions.clone(), input.clone())).await?;
     //once we have broken from the main loop we can delete the assistant and thread
     client.assistants().delete(assistant_id).await?;
     client.threads().delete(&thread.id).await?;

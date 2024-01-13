@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::future::Future;
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
             RunStatus, MessageContent, CreateAssistantRequestArgs,
@@ -55,7 +56,13 @@ pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, promp
 
 
 
-pub async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&ThreadObject, assistant:&AssistantObject, output: Option<&dyn Fn(&String) -> Result<(), Box<dyn Error>>>) -> Result<(), Box<dyn Error>>
+pub async fn main_action<F, Fut>(client:&Client<OpenAIConfig>,
+                                 thread:&ThreadObject, assistant:&AssistantObject, input:&String,
+                         output: F)
+    -> Result<(), Box<dyn Error>>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<(), Box<dyn Error>>>,
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
@@ -130,9 +137,7 @@ pub async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&Th
                 //print the text
                 println!("--- Response: {}", &text);
 
-                if output.is_some() {
-                    output.ok_or(&text);
-                }
+                output(text).await?;
 
             }
             RunStatus::Failed => {
@@ -141,8 +146,6 @@ pub async fn main_action(client:&Client<OpenAIConfig>, input:&String, thread:&Th
             }
             otherwise => report_status(otherwise),
         }
-        //wait for 1 second before checking the status again
-        std::thread::sleep(std::time::Duration::from_secs(1));
     }
 
 

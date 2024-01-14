@@ -58,7 +58,7 @@ pub trait Saver
 //    F: Fn(String) -> Fut,
 //    Fut: Future<Output = Result<(), Box<dyn Error>>>,
 {
-    async fn save(&self, out_dir:&String, text:String) -> Result<(), Box<dyn Error>>;
+    fn save(&self, out_dir:&String, text:String) -> impl Future<Output = Result<(), Box<dyn Error>>> + Send;
 }
 
 

@@ -13,20 +13,11 @@ use serde::{Serialize, Deserialize};
 use openai_api::{
     create_opeai_client,
     main_action,
-    report_status,
     setup_assistant,
-    OpenAi};
-
-use tokio::fs::write;
-
-use async_openai::{
-    types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
-            RunStatus, MessageContent, CreateAssistantRequestArgs,
-            AssistantObject, ThreadObject,},
-    config::OpenAIConfig,
-    error::OpenAIError,
-    Client,
+    OpenAi,
+    Saver,
 };
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -85,6 +76,24 @@ enum Commands {
     },
 }
 
+
+impl Saver for Cli {
+    //async fn save(dir: &String, args:&Cli, instructions:&String, input:&String, text:&String) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, out_dir:&String, text:String) -> Result<(), Box<dyn Error>> {
+        println!("###### {:?}", &out_dir);
+        match &self.command {
+            Commands::AskAi { markers, ..} => {
+                save_output(&out_dir, &"output.fs".to_string(), &text, markers).await?;
+            },
+            Commands::RunFs { markers, .. } => {
+                save_output(&out_dir, &"output.fs".to_string(), &text, markers).await?;
+            },
+        }
+
+        Ok(())
+    }
+
+}
 
 
 #[derive(Error, Debug)]
@@ -212,7 +221,7 @@ async fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Ve
         let mut mark_found = false;
         for c in contents {
             match c {
-                Mark::Marker{text: _} => mark_found = true,
+                Mark::Marker{text:_} => mark_found = true,
                 Mark::Content{text} => {
                     save_file(&dir, "output.fs", &text.to_string()).await?;
                     break;
@@ -235,7 +244,6 @@ async fn save_file(dir: &str, file: &str, content: &String) -> io::Result<()> {
 
 
 async fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> io::Result<()> {
-    println!("save_input()");
     let mut combined_input = String::new();
     for (tag, content) in inputs {
         combined_input.push_str(tag);
@@ -245,6 +253,8 @@ async fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> 
 
     Ok(())
 }
+
+
 
 
 #[tokio::main]
@@ -260,32 +270,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     prepare_directory(&output_directory)?;
 
+    let inputs = vec![("### prompt", &instructions), ("### input", &input)];
+    save_input(&output_directory, &"input.txt".to_string(), &inputs).await?;
+
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let client = create_opeai_client(config);
     let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
     let assistant_id = &assistant.id;
-    let query = [("limit", "1")]; //limit the list responses to 1 message
-    //async fn save(dir: &String, args:&Cli, instructions:&String, input:&String, text:&String) -> Result<(), Box<dyn Error>> {
-    async fn save(text:String, out_dir: String, instructions:String, input:String) -> Result<(), Box<dyn Error>> {
-        println!("###### {:?}", &out_dir);
-        let inputs = vec![("### prompt", &instructions), ("### input", &input)];
-        save_input(&out_dir, &"input.txt".to_string(), &inputs).await?;
-/*
-        if let Commands::AskAi{markers, ..} = &args.command {
-            save_output(&output_directory, &"output.fs".to_string(), &text, markers).await?;
-        } else if let Commands::RunFs{markers, ..} = &args.command {
-            save_output(&output_directory, &"output.fs".to_string(), &text, markers).await?;
-        } else {
-            save_file(&output_directory, "output.fs", &text).await?;
-        }
-        */
 
-        Ok(())
-    }
-
-    main_action(&client, &thread, &assistant, &input,
-                |text| save(text, output_directory.clone(), instructions.clone(), input.clone())).await?;
+    main_action(&client, &thread, &assistant, &input, &output_directory, args).await?;
     //once we have broken from the main loop we can delete the assistant and thread
     client.assistants().delete(assistant_id).await?;
     client.threads().delete(&thread.id).await?;

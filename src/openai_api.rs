@@ -54,15 +54,23 @@ pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, promp
     Ok((thread, assistant))
 }
 
+pub trait Saver
+//    F: Fn(String) -> Fut,
+//    Fut: Future<Output = Result<(), Box<dyn Error>>>,
+{
+    async fn save(&self, out_dir:&String, text:String) -> Result<(), Box<dyn Error>>;
+}
 
 
-pub async fn main_action<F, Fut>(client:&Client<OpenAIConfig>,
-                                 thread:&ThreadObject, assistant:&AssistantObject, input:&String,
-                         output: F)
+
+pub async fn main_action<S>(client:&Client<OpenAIConfig>,
+                                 thread:&ThreadObject, assistant:&AssistantObject,
+                         input:&String,
+                         out_dir: &String,
+                         saver : S)
     -> Result<(), Box<dyn Error>>
 where
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = Result<(), Box<dyn Error>>>,
+    S: Saver
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
@@ -137,7 +145,8 @@ where
                 //print the text
                 println!("--- Response: {}", &text);
 
-                output(text).await?;
+                let save_action = saver.save(out_dir, text).await?;
+
 
             }
             RunStatus::Failed => {

@@ -16,7 +16,7 @@ strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
 tokio = { version = "1.35", features=["full"]}
-rocket = "0.5.0"
+rocket = { version = "0.5", features=["json"]}
 
 
 [lib]

@@ -4,41 +4,146 @@ use iced::{
     Alignment, Application, Color, Command, Element, Length, Settings, Theme,
 };
 
-pub fn main() -> iced::Result {
-    Pokedex::run(Settings::default())
+use clap::{Parser, Subcommand};
+
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// yaml file to store credentials
+    #[arg(long)]
+    yaml: String,
+    #[arg(long)]
+    key: String,
+    #[arg(long)]
+    name: String,
+
+    #[clap(subcommand)]
+    command: Commands,
 }
 
-#[derive(Debug)]
-enum Pokedex {
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    AskAi {
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        input: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        prompt: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        output_dir: String,
+        #[arg(long)]
+        markers: Option<Vec<String>>
+    },
+    RunFs {
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        input: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        prompt: String,
+        #[clap(
+        required = true,
+        //arg_enum,
+        )]
+        output_dir: String,
+        #[arg(long)]
+        markers: Option<Vec<String>>
+    },
+}
+
+impl Default for Cli {
+    fn default() -> Cli {
+        <Cli as Default>::AskAi {
+            input: "input/input.txt".to_string(),
+            prompt:"input/prompt.txt".to_string(),
+            output_dir:"output".to_string(),
+            markers:None}
+
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+enum LangFlag {
+    English,
+    Spanish,
+    #[default]
+    Franch,
+}
+
+
+impl Into<String> for LangFlag {
+    fn into(self) -> String {
+        match self {
+            LangFlag::English => String::from("en"),
+            LangFlag::Spanish => String::from("es"),
+            LangFlag::Franch => String::from("fr"),
+        }
+    }
+}
+
+pub fn main() -> iced::Result {
+    AiAssistant::run(Settings::default())
+}
+
+
+#[derive(Debug, Clone)]
+enum PokedexState {
     Loading,
     Loaded { pokemon: Pokemon },
     Errored,
 }
 
+
+#[derive(Debug, Clone)]
+struct AiAssistant {
+    lang: LangFlag,
+    state : PokedexState,
+    env: Cli,
+}
+
+
 #[derive(Debug, Clone)]
 enum Message {
     PokemonFound(Result<Pokemon, Error>),
     Search,
+    Test,
 }
 
-impl Application for Pokedex {
+
+
+impl Application for AiAssistant {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = ();
+    type Flags = (LangFlag, Cli);
 
-    fn new(_flags: ()) -> (Pokedex, Command<Message>) {
+    fn new(flags: (LangFlag, Cli)) -> (AiAssistant, Command<Message>) {
+        println!("Application::new({:?})", flags);
         (
-            Pokedex::Loading,
-            Command::perform(Pokemon::search(), Message::PokemonFound),
+            AiAssistant {lang:flags.0, state:PokedexState::Loading, env:flags.1},
+            Command::perform(Pokemon::test(), Message::PokemonFound),
         )
     }
 
     fn title(&self) -> String {
         let subtitle = match self {
-            Pokedex::Loading => "Loading",
-            Pokedex::Loaded { pokemon, .. } => &pokemon.name,
-            Pokedex::Errored { .. } => "Whoops!",
+            AiAssistant {state:PokedexState::Loading, ..} => "Loading",
+            AiAssistant {state:PokedexState::Loaded { pokemon, .. }, ..}=> &pokemon.name,
+            AiAssistant {state:PokedexState::Errored { .. }, ..} => "Whoops!",
         };
 
         format!("{subtitle} - Pokédex")
@@ -47,40 +152,50 @@ impl Application for Pokedex {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::PokemonFound(Ok(pokemon)) => {
-                *self = Pokedex::Loaded { pokemon };
+                println!("update():PokemonFound(Ok())");
+                self.state = PokedexState::Loaded { pokemon };
 
                 Command::none()
             }
             Message::PokemonFound(Err(_error)) => {
-                *self = Pokedex::Errored;
+                println!("update():PokemonFound(Err())");
+                self.state = PokedexState::Errored;
 
                 Command::none()
             }
             Message::Search => match self {
-                Pokedex::Loading => Command::none(),
+                AiAssistant {state:PokedexState::Loading, ..} => {
+                    println!("update():Search Loading");
+                    Command::none()
+                },
                 _ => {
-                    *self = Pokedex::Loading;
+                    println!("update():Search otherwise");
+                    self.state = PokedexState::Loading;
 
-                    Command::perform(Pokemon::search(), Message::PokemonFound)
+                    Command::perform(Pokemon::search(self.lang.clone()), Message::PokemonFound)
                 }
             },
+            Message::Test => {
+                println!("update():Test");
+                Command::none()
+            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let content = match self {
-            Pokedex::Loading => {
+        let content = match &self.state {
+            PokedexState::Loading => {
                 column![text("Searching for Pokémon...").size(40),]
                     .width(Length::Shrink)
             }
-            Pokedex::Loaded { pokemon } => column![
+            PokedexState::Loaded { pokemon } => column![
                 pokemon.view(),
                 button("Keep searching!").on_press(Message::Search)
             ]
             .max_width(500)
             .spacing(20)
             .align_items(Alignment::End),
-            Pokedex::Errored => column![
+            PokedexState::Errored => column![
                 text("Whoops! Something went wrong...").size(40),
                 button("Try again").on_press(Message::Search)
             ]
@@ -129,7 +244,11 @@ impl Pokemon {
         .into()
     }
 
-    async fn search() -> Result<Pokemon, Error> {
+    async fn test() -> Result<Pokemon, Error> {
+        Err(Error::APIError)
+    }
+
+    async fn search(lang: LangFlag) -> Result<Pokemon, Error> {
         use rand::Rng;
         use serde::Deserialize;
 
@@ -166,10 +285,11 @@ impl Pokemon {
             futures::future::try_join(fetch_entry, Self::fetch_image(id))
                 .await?;
 
+        let lang_string :String = lang.clone().into();
         let description = entry
             .flavor_text_entries
             .iter()
-            .find(|text| text.language.name == "en")
+            .find(|text| text.language.name == lang_string)
             .ok_or(Error::LanguageError)?;
 
         Ok(Pokemon {

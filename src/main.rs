@@ -1,8 +1,6 @@
-use std::error::Error;
 use std::{fs, io, path};
 use std::io::ErrorKind;
 use std::path::{PathBuf};
-use async_openai::error;
 use async_openai::error::OpenAIError;
 
 use thiserror::Error;
@@ -12,8 +10,6 @@ use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
 use openai_api::{
     create_opeai_client,
-    main_action,
-    setup_assistant,
     OpenAi,
     Saver,
     OpenAIApiError,

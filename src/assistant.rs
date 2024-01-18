@@ -1,12 +1,9 @@
 use std::{fs, io};
-//use std::error::Error;
 use std::path::{PathBuf};
-use std::thread::Thread;
 
-use iced::futures;
 use iced::widget::{self, column, container, image, row, text};
 use iced::{
-    Alignment, Application, Color, Command, Element, Length, Settings, Theme,
+    Application, Command, Element, Length, Settings, Theme,
 };
 use async_openai::{
     config::OpenAIConfig,
@@ -16,8 +13,8 @@ use async_openai::types::{AssistantObject, ThreadObject};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
-use serde::{Serialize, Deserialize};
-use openai_api::{create_opeai_client, main_action, setup_assistant, OpenAi, Saver, OpenAIApiError};
+use serde::{Deserialize};
+use openai_api::{OpenAi, Saver, OpenAIApiError};
 //use thiserror::Error;
 pub mod config;
 
@@ -226,7 +223,6 @@ impl Application for Model {
 #[derive(Debug, Clone)]
 enum Error {
     APIError,
-    LanguageError,
 }
 
 impl From<reqwest::Error> for Error {

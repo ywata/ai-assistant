@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::future::Future;
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
@@ -9,7 +8,6 @@ use async_openai::{
     Client,
 };
 
-use thiserror::Error;
 use serde::{Serialize, Deserialize};
 use crate::OpenAIApiError::OpenAIAccessError;
 
@@ -150,7 +148,7 @@ where
                 //print the text
                 println!("--- Response: {}", &text);
 
-                let save_action = saver.save(out_dir, text).await?;
+                let _save_action = saver.save(out_dir, text).await?;
 
 
             }

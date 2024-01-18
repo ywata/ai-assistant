@@ -11,11 +11,18 @@ use async_openai::{
 
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
+use crate::OpenAIApiError::OpenAIAccessError;
 
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OpenAi {
     Token { token: String },
+}
+
+impl Default for OpenAi {
+    fn default() -> Self {
+        OpenAi::Token {token: "".to_string()}
+    }
 }
 
 
@@ -34,7 +41,8 @@ pub fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
 }
 
 
-pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, prompt: &String) -> Result<(ThreadObject, AssistantObject), Box<dyn Error>> {
+pub async fn setup_assistant(name: String, client: &Client<OpenAIConfig>, prompt: String)
+    -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
     let thread = client.threads().create(thread_request.clone()).await?;
@@ -54,11 +62,8 @@ pub async fn setup_assistant(name: &String, client: &Client<OpenAIConfig>, promp
     Ok((thread, assistant))
 }
 
-pub trait Saver
-//    F: Fn(String) -> Fut,
-//    Fut: Future<Output = Result<(), Box<dyn Error>>>,
-{
-    fn save(&self, out_dir:&String, text:String) -> impl Future<Output = Result<(), Box<dyn Error>>> + Send;
+pub trait Saver {
+    fn save(&self, out_dir:&String, text:String) -> impl Future<Output = Result<(), OpenAIApiError>> + Send;
 }
 
 
@@ -68,7 +73,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                          input:&String,
                          out_dir: &String,
                          saver : S)
-    -> Result<(), Box<dyn Error>>
+    -> Result<(), OpenAIApiError>
 where
     S: Saver
 {
@@ -191,3 +196,24 @@ pub fn report_status(status: RunStatus) {
     }
 
 }
+
+#[derive(Debug, Clone)]
+pub enum OpenAIApiError {
+    OpenAIAccessError
+
+}
+
+impl From<OpenAIError> for OpenAIApiError {
+    fn from(error: OpenAIError) -> OpenAIApiError {
+        dbg!(error);
+        OpenAIAccessError
+    }
+}
+
+impl From<std::io::Error> for OpenAIApiError {
+    fn from(error: std::io::Error) -> OpenAIApiError {
+        dbg!(error);
+        OpenAIApiError::OpenAIAccessError
+    }
+}
+

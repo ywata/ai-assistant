@@ -1,13 +1,27 @@
+use std::{fs, io};
+//use std::error::Error;
+use std::path::{PathBuf};
+use std::thread::Thread;
+
 use iced::futures;
 use iced::widget::{self, column, container, image, row, text};
 use iced::{
     Alignment, Application, Color, Command, Element, Length, Settings, Theme,
 };
+use async_openai::{
+    config::OpenAIConfig,
+    Client,
+};
+use async_openai::types::{AssistantObject, ThreadObject};
+use thiserror::Error;
 
 use clap::{Parser, Subcommand};
+use serde::{Serialize, Deserialize};
+use openai_api::{create_opeai_client, main_action, setup_assistant, OpenAi, Saver, OpenAIApiError};
+//use thiserror::Error;
+pub mod config;
 
-
-#[derive(Parser, Debug)]
+#[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// yaml file to store credentials
@@ -23,42 +37,14 @@ struct Cli {
 }
 
 
-#[derive(Debug, Subcommand)]
+#[derive(Clone, Debug, Subcommand)]
 enum Commands {
     AskAi {
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
+        #[clap(required = true, )]
         input: String,
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
+        #[clap(required = true, )]
         prompt: String,
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
-        output_dir: String,
-        #[arg(long)]
-        markers: Option<Vec<String>>
-    },
-    RunFs {
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
-        input: String,
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
-        prompt: String,
-        #[clap(
-        required = true,
-        //arg_enum,
-        )]
+        //#[clap(required = true, )]
         output_dir: String,
         #[arg(long)]
         markers: Option<Vec<String>>
@@ -66,142 +52,167 @@ enum Commands {
 }
 
 impl Default for Cli {
-    fn default() -> Cli {
-        <Cli as Default>::AskAi {
-            input: "input/input.txt".to_string(),
-            prompt:"input/prompt.txt".to_string(),
-            output_dir:"output".to_string(),
-            markers:None}
-
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-enum LangFlag {
-    English,
-    Spanish,
-    #[default]
-    Franch,
-}
-
-
-impl Into<String> for LangFlag {
-    fn into(self) -> String {
-        match self {
-            LangFlag::English => String::from("en"),
-            LangFlag::Spanish => String::from("es"),
-            LangFlag::Franch => String::from("fr"),
+    fn default() -> Self {
+        Cli {yaml:"service.yaml".to_string(),
+            key:"openai".to_string(),
+            name:"ai assistant".to_string(),
+            command: Commands::AskAi{
+                input: "input.txt".to_string(),
+                prompt: "prompt.txt".to_string(),
+                output_dir: "output".to_string(),
+                markers:None}
         }
     }
 }
 
-pub fn main() -> iced::Result {
-    AiAssistant::run(Settings::default())
+trait LlmInput {
+    fn get_input(&self) -> io::Result<String>;
+    fn get_prompt(&self) -> io::Result<String>;
+    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>;
+}
+
+impl LlmInput for Commands {
+    fn get_input(&self) -> io::Result<String> {
+        match self {
+            Commands::AskAi{input, ..} => {
+                fs::read_to_string(input)
+            },
+        }
+    }
+    fn get_prompt(&self) -> io::Result<String> {
+        match self {
+            Commands::AskAi{prompt,..} => {
+                fs::read_to_string(prompt)
+            },
+        }
+    }
+    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>{
+
+        let p = match self {
+            Commands::AskAi{output_dir, ..} => {
+                output_dir.clone()
+            },
+        };
+        let mut path = PathBuf::from(p);
+        if let Some(child) = dir {
+            let child_name = PathBuf::from(&child);
+            path = path.join(child_name);
+        } else {
+
+        }
+
+        path.to_str().map(|s|s.to_string())
+    }
 }
 
 
-#[derive(Debug, Clone)]
-enum PokedexState {
-    Loading,
-    Loaded { pokemon: Pokemon },
-    Errored,
+pub fn main() -> Result<(), AssistantError> {
+    let args = Cli::parse();
+
+    let config_content = fs::read_to_string(&args.yaml)?;
+    let config: OpenAi = config::read_config(&args.key, &config_content)?;
+    let prompt = &args.command.get_prompt()?;
+    //let prompt = std::fs::read_to_string(&args.command.get_prompt()?);
+
+    let settings = Settings::default();
+    let updated_settings = Settings {
+        flags: (args, config, prompt.clone()),
+        ..settings
+    };
+
+    Model::run(updated_settings);
+
+    Ok(())
 }
 
 
+
 #[derive(Debug, Clone)]
-struct AiAssistant {
-    lang: LangFlag,
-    state : PokedexState,
+struct Model {
     env: Cli,
+    client: Option<Client<OpenAIConfig>>,
+    thread: Option<ThreadObject>,
+    assistant: Option<AssistantObject>,
 }
 
 
 #[derive(Debug, Clone)]
 enum Message {
-    PokemonFound(Result<Pokemon, Error>),
-    Search,
-    Test,
+    Connected(
+        Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
+}
+
+#[derive(Error, Clone, Debug)]
+pub enum AssistantError {
+    #[error("file already exists for the directory")]
+    FileExists(),
+    #[error("API access failed")]
+    AppAccessError,
+}
+
+
+impl From<openai_api::OpenAIApiError> for AssistantError {
+    fn from(error: openai_api::OpenAIApiError) -> AssistantError {
+        dbg!(error);
+        AssistantError::AppAccessError
+    }
+}
+impl From<std::io::Error> for AssistantError {
+    fn from(error: std::io::Error) -> AssistantError {
+        dbg!(error);
+        AssistantError::AppAccessError
+    }
+}
+impl From<config::ConfigError> for AssistantError {
+    fn from(error: config::ConfigError) -> AssistantError {
+        dbg!(error);
+        AssistantError::AppAccessError
+    }
 }
 
 
 
-impl Application for AiAssistant {
+
+
+async fn connect(config: OpenAi, name: String, prompt: String )
+                 -> Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>{
+    let client = openai_api::create_opeai_client(config);
+    let (th, ass)
+        = openai_api::setup_assistant(name, &client, prompt).await?;
+    Ok((client, th, ass))
+}
+
+
+
+impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (LangFlag, Cli);
+    type Flags = (Cli, OpenAi, String);
 
-    fn new(flags: (LangFlag, Cli)) -> (AiAssistant, Command<Message>) {
-        println!("Application::new({:?})", flags);
+    fn new(flags: (Cli, OpenAi, String)) -> (Model, Command<Message>) {
+        let name = flags.0.name.clone();
         (
-            AiAssistant {lang:flags.0, state:PokedexState::Loading, env:flags.1},
-            Command::perform(Pokemon::test(), Message::PokemonFound),
+            Model {env: flags.0, client: None, thread: None, assistant: None},
+            Command::perform(connect(flags.1, name, flags.2 ), Message::Connected),
         )
     }
 
     fn title(&self) -> String {
-        let subtitle = match self {
-            AiAssistant {state:PokedexState::Loading, ..} => "Loading",
-            AiAssistant {state:PokedexState::Loaded { pokemon, .. }, ..}=> &pokemon.name,
-            AiAssistant {state:PokedexState::Errored { .. }, ..} => "Whoops!",
-        };
-
-        format!("{subtitle} - Pokédex")
+        "title".to_string()
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::PokemonFound(Ok(pokemon)) => {
-                println!("update():PokemonFound(Ok())");
-                self.state = PokedexState::Loaded { pokemon };
-
+            Message::Connected(val) => {
+                println!("{:?}", val);
                 Command::none()
-            }
-            Message::PokemonFound(Err(_error)) => {
-                println!("update():PokemonFound(Err())");
-                self.state = PokedexState::Errored;
-
-                Command::none()
-            }
-            Message::Search => match self {
-                AiAssistant {state:PokedexState::Loading, ..} => {
-                    println!("update():Search Loading");
-                    Command::none()
-                },
-                _ => {
-                    println!("update():Search otherwise");
-                    self.state = PokedexState::Loading;
-
-                    Command::perform(Pokemon::search(self.lang.clone()), Message::PokemonFound)
-                }
             },
-            Message::Test => {
-                println!("update():Test");
-                Command::none()
-            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let content = match &self.state {
-            PokedexState::Loading => {
-                column![text("Searching for Pokémon...").size(40),]
-                    .width(Length::Shrink)
-            }
-            PokedexState::Loaded { pokemon } => column![
-                pokemon.view(),
-                button("Keep searching!").on_press(Message::Search)
-            ]
-            .max_width(500)
-            .spacing(20)
-            .align_items(Alignment::End),
-            PokedexState::Errored => column![
-                text("Whoops! Something went wrong...").size(40),
-                button("Try again").on_press(Message::Search)
-            ]
-            .spacing(20)
-            .align_items(Alignment::End),
-        };
+        let content = "asdf";
 
         container(content)
             .width(Length::Fill)
@@ -209,115 +220,6 @@ impl Application for AiAssistant {
             .center_x()
             .center_y()
             .into()
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Pokemon {
-    number: u16,
-    name: String,
-    description: String,
-    image: image::Handle,
-}
-
-impl Pokemon {
-    const TOTAL: u16 = 807;
-
-    fn view(&self) -> Element<Message> {
-        row![
-            image::viewer(self.image.clone()),
-            column![
-                row![
-                    text(&self.name).size(30).width(Length::Fill),
-                    text(format!("#{}", self.number))
-                        .size(20)
-                        .style(Color::from([0.5, 0.5, 0.5])),
-                ]
-                .align_items(Alignment::Center)
-                .spacing(20),
-                self.description.as_ref(),
-            ]
-            .spacing(20),
-        ]
-        .spacing(20)
-        .align_items(Alignment::Center)
-        .into()
-    }
-
-    async fn test() -> Result<Pokemon, Error> {
-        Err(Error::APIError)
-    }
-
-    async fn search(lang: LangFlag) -> Result<Pokemon, Error> {
-        use rand::Rng;
-        use serde::Deserialize;
-
-        #[derive(Debug, Deserialize)]
-        struct Entry {
-            name: String,
-            flavor_text_entries: Vec<FlavorText>,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct FlavorText {
-            flavor_text: String,
-            language: Language,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct Language {
-            name: String,
-        }
-
-        let id = {
-            let mut rng = rand::rngs::OsRng;
-
-            rng.gen_range(0..Pokemon::TOTAL)
-        };
-
-        let fetch_entry = async {
-            let url = format!("https://pokeapi.co/api/v2/pokemon-species/{id}");
-
-            reqwest::get(&url).await?.json().await
-        };
-
-        let (entry, image): (Entry, _) =
-            futures::future::try_join(fetch_entry, Self::fetch_image(id))
-                .await?;
-
-        let lang_string :String = lang.clone().into();
-        let description = entry
-            .flavor_text_entries
-            .iter()
-            .find(|text| text.language.name == lang_string)
-            .ok_or(Error::LanguageError)?;
-
-        Ok(Pokemon {
-            number: id,
-            name: entry.name.to_uppercase(),
-            description: description
-                .flavor_text
-                .chars()
-                .map(|c| if c.is_control() { ' ' } else { c })
-                .collect(),
-            image,
-        })
-    }
-
-    async fn fetch_image(id: u16) -> Result<image::Handle, reqwest::Error> {
-        let url = format!(
-            "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png"
-        );
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let bytes = reqwest::get(&url).await?.bytes().await?;
-
-            Ok(image::Handle::from_memory(bytes))
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        Ok(image::Handle::from_path(url))
     }
 }
 

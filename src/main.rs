@@ -2,11 +2,11 @@ use std::error::Error;
 use std::{fs, io, path};
 use std::io::ErrorKind;
 use std::path::{PathBuf};
+use async_openai::error;
+use async_openai::error::OpenAIError;
 
 use thiserror::Error;
 use chrono;
-
-pub mod config;
 
 use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
@@ -16,7 +16,11 @@ use openai_api::{
     setup_assistant,
     OpenAi,
     Saver,
+    OpenAIApiError,
 };
+use crate::AppError::AppAccessError;
+
+mod config;
 
 
 #[derive(Parser, Debug)]
@@ -79,7 +83,7 @@ enum Commands {
 
 impl Saver for Cli {
     //async fn save(dir: &String, args:&Cli, instructions:&String, input:&String, text:&String) -> Result<(), Box<dyn Error>> {
-    async fn save(&self, out_dir:&String, text:String) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, out_dir:&String, text:String) -> Result<(), OpenAIApiError> {
         println!("###### {:?}", &out_dir);
         match &self.command {
             Commands::AskAi { markers, ..} => {
@@ -100,8 +104,29 @@ impl Saver for Cli {
 pub enum AppError {
     #[error("file already exists for the directory")]
     FileExists(),
+    #[error("API access failed")]
+    AppAccessError,
 }
 
+
+impl From<openai_api::OpenAIApiError> for AppError {
+    fn from(error: openai_api::OpenAIApiError) -> AppError {
+        dbg!(error);
+        AppAccessError
+    }
+}
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> AppError {
+        dbg!(error);
+        AppAccessError
+    }
+}
+impl From<config::ConfigError> for AppError {
+    fn from(error: config::ConfigError) -> AppError {
+        dbg!(error);
+        AppAccessError
+    }
+}
 
 
 fn prepare_directory(dir: &str) -> io::Result<()>{
@@ -257,8 +282,9 @@ async fn save_input(dir:&String, file:&String, inputs:&Vec<(&str, &String)>) -> 
 
 
 
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), AppError> {
     let args = Cli::parse();
 
     let input = args.command.get_input()?;
@@ -276,17 +302,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let client = create_opeai_client(config);
-    let (thread, assistant) = setup_assistant(&args.name, &client, &instructions).await?;
-    let assistant_id = &assistant.id;
+    //let (thread, assistant) = setup_assistant(args.name, &client, &instructions).await?;
+    //let assistant_id = &assistant.id;
 
-    main_action(&client, &thread, &assistant, &input, &output_directory, args).await?;
+    //main_action(&client, &thread, &assistant, &input, &output_directory, args).await?;
     //once we have broken from the main loop we can delete the assistant and thread
-    client.assistants().delete(assistant_id).await?;
-    client.threads().delete(&thread.id).await?;
+    //client.assistants().delete(assistant_id).await?;
+    //client.threads().delete(&thread.id).await?;
 
 
     Ok(())
 }
+
+impl From<async_openai::error::OpenAIError> for AppError {
+    fn from(error: OpenAIError) -> AppError {
+        dbg!(error);
+        AppError::AppAccessError
+    }
+}
+
+
 
 
 #[cfg(test)]

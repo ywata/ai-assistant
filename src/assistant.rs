@@ -51,6 +51,7 @@ enum Commands {
 
 }
 
+
 impl Default for Cli {
     fn default() -> Self {
         Cli {yaml:"service.yaml".to_string(),
@@ -90,12 +91,48 @@ pub fn main() -> Result<(), AssistantError> {
 #[derive(Debug, Clone)]
 enum Message {
     Connected(Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
-    OpenPromptFile,
-    OpenInputFile,
-    PromptFileOpened(Result<(PathBuf, Arc<String>), Error>),
-    InputFileOpened(Result<(PathBuf, Arc<String>), Error>),
-    ActionPerformed(text_editor::Action),
+    OpenFile(AreaIndex),
+    FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
+    ActionPerformed(AreaIndex, text_editor::Action),
+}
 
+#[derive(Debug)]
+struct EditArea {
+    path: Option<PathBuf>,
+    content: text_editor::Content,
+    is_dirty: bool,
+    is_loading: bool,
+}
+
+impl Default for EditArea {
+    fn default() -> Self {
+        EditArea {
+            path: None,
+            content: text_editor::Content::new(),
+            is_dirty: false,
+            is_loading: false,
+        }
+    }
+}
+
+impl EditArea {
+    fn default_path(self, path: &String) -> Self{
+        let default: EditArea = EditArea::default();
+        let pbuf : PathBuf = PathBuf::from(path);
+        let edit_area = EditArea{
+            path: Some(pbuf),
+            ..default
+        };
+        edit_area
+    }
+}
+
+
+#[derive(Debug, Copy, Clone)]
+enum AreaIndex{
+    Prompt = 0,
+    Input = 1,
+    Result = 2,
 }
 
 #[derive(Debug)]
@@ -103,10 +140,7 @@ struct Model {
     env: Cli,
     client: Option<Client<OpenAIConfig>>,
     access: Option<(ThreadObject, AssistantObject)>,
-    prompt: text_editor::Content,
-    input: text_editor::Content,
-    result: text_editor::Content,
-    is_loading: bool,
+    edit_areas: Vec<EditArea>,
 }
 
 
@@ -153,20 +187,20 @@ impl Application for Model {
     type Executor = iced::executor::Default;
     type Flags = (Cli, OpenAi);
 
-    fn new(flags: (Cli, OpenAi)) -> (Model, Command<Message>) {
-        let prompt_file = PathBuf::from(&flags.0.prompt_file);
-        let input_file = PathBuf::from(&flags.0.input_file);
+    fn  new(flags: (Cli, OpenAi)) -> (Model, Command<Message>) {
+        let prompt_path = PathBuf::from(&flags.0.prompt_file);
+        let input_path = PathBuf::from(&flags.0.input_file);
+        let prompt = EditArea::default();
+        let input = EditArea::default();
+        let result = EditArea::default();
+
         (
             Model {env: flags.0, client: None, access: None,
-                prompt: text_editor::Content::new(),
-                input: text_editor::Content::new(),
-                result: text_editor::Content::new(),
-                is_loading: false,
+                   edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
-                Command::perform(load_file(prompt_file), Message::PromptFileOpened),
-                Command::perform(load_file(input_file), Message::InputFileOpened),
-            ])
+                Command::perform(load_file(AreaIndex::Prompt, prompt_path), Message::FileOpened),
+                Command::perform(load_file(AreaIndex::Input, input_path), Message::FileOpened)])
         )
     }
 
@@ -187,71 +221,59 @@ impl Application for Model {
 
                 }
             },
-            Message::OpenPromptFile =>{
-                if self.is_loading {
-                    Command::none()
-                } else {
-                    self.is_loading = true;
-                    Command::perform(open_file(), Message::PromptFileOpened)
-                }
+            Message::OpenFile(idx) => {
+
+                Command::none()
             },
-            Message::OpenInputFile =>{
-                if self.is_loading {
-                    Command::none()
-                } else {
-                    self.is_loading = true;
-                    Command::perform(open_file(), Message::InputFileOpened)
-                }
-            },
-            Message::PromptFileOpened(result) => {
-                self.is_loading = false;
-                if let Ok((path, contents)) = result {
-                    self.prompt = text_editor::Content::with_text(&contents);
+            Message::FileOpened(result) => {
+                if let Ok((idx, (path, contents))) = result {
+                    let content = text_editor::Content::with_text(&contents);
+                    let default = EditArea::default();
+                    self.edit_areas[idx as usize] = EditArea{
+                        path: Some(path),
+                        content: content,
+                        ..default
+                    };
                 }
                 Command::none()
             },
-            Message::InputFileOpened(result) => {
-                self.is_loading = false;
-                if let Ok((path, contents)) = result {
-                    self.input = text_editor::Content::with_text(&contents);
-                }
-                Command::none()
-            },
-            Message::ActionPerformed(action) => {
-                self.input.perform(action);
+            Message::ActionPerformed(idx, action) => {
+                self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             },
         }
     }
 
     fn view(&self) -> Element<Message> {
+        let  vec = &self.edit_areas;
         row![
             column![
-                text_editor(&self.prompt),
-                text_editor(&self.input)
-                .on_action(Message::ActionPerformed),
+                text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
+                  .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
+                text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
+                  .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
             ],
-            text_editor(&self.result),
+            text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content),
         ].into()
     }
 }
-async fn open_file() -> Result<(PathBuf, Arc<String>), Error> {
+/*async fn open_file<T: Copy>(idx: T) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
     let picked_file = rfd::AsyncFileDialog::new()
         .set_title("Open a text file...")
         .pick_file()
         .await
-        .ok_or(Error::DialogClosed)?;
+        .ok_or((idx, Error::DialogClosed))?;
 
-    load_file(picked_file.path().to_owned()).await
-}
+    load_file(idx, picked_file.path().to_owned()).await
+}*/
 
-async fn load_file(path: PathBuf) -> Result<(PathBuf, Arc<String>), Error> {
+async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
     let contents = tokio::fs::read_to_string(&path)
         .await
         .map(Arc::new)
-        .map_err(|error| Error::IoError(error.kind()))?;
+        .map_err(|error| (idx, Error::IoError(error.kind())))?;
 
-    Ok((path, contents))
+    Ok((idx, (path.clone(), contents)))
 }
 
 

@@ -1,7 +1,10 @@
 use std::{fs, io};
 use std::path::{PathBuf};
+use std::sync::Arc;
 
-use iced::widget::{self, column, container, image, row, text};
+use iced::widget::{self,
+                   column, container, image, row,
+                   text, text_editor};
 use iced::{
     Application, Command, Element, Length, Settings, Theme,
 };
@@ -28,6 +31,14 @@ struct Cli {
     key: String,
     #[arg(long)]
     name: String,
+    #[arg(long)]
+    prompt_file: String,
+    #[arg(long)]
+    input_file: String,
+    #[arg(long)]
+    output_dir: String,
+    #[arg(long)]
+    markers: Option<Vec<String>>,
 
     #[clap(subcommand)]
     command: Commands,
@@ -36,16 +47,8 @@ struct Cli {
 
 #[derive(Clone, Debug, Subcommand)]
 enum Commands {
-    AskAi {
-        #[clap(required = true, )]
-        input: String,
-        #[clap(required = true, )]
-        prompt: String,
-        //#[clap(required = true, )]
-        output_dir: String,
-        #[arg(long)]
-        markers: Option<Vec<String>>
-    },
+    AskAi,
+
 }
 
 impl Default for Cli {
@@ -53,54 +56,15 @@ impl Default for Cli {
         Cli {yaml:"service.yaml".to_string(),
             key:"openai".to_string(),
             name:"ai assistant".to_string(),
-            command: Commands::AskAi{
-                input: "input.txt".to_string(),
-                prompt: "prompt.txt".to_string(),
-                output_dir: "output".to_string(),
-                markers:None}
+            input_file: "input.txt".to_string(),
+            prompt_file: "prompt.txt".to_string(),
+            output_dir: "output".to_string(),
+            markers:None,
+            command: Commands::AskAi
         }
     }
 }
 
-trait LlmInput {
-    fn get_input(&self) -> io::Result<String>;
-    fn get_prompt(&self) -> io::Result<String>;
-    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>;
-}
-
-impl LlmInput for Commands {
-    fn get_input(&self) -> io::Result<String> {
-        match self {
-            Commands::AskAi{input, ..} => {
-                fs::read_to_string(input)
-            },
-        }
-    }
-    fn get_prompt(&self) -> io::Result<String> {
-        match self {
-            Commands::AskAi{prompt,..} => {
-                fs::read_to_string(prompt)
-            },
-        }
-    }
-    fn get_output_dir(&self, dir:Option<&str>) -> Option<String>{
-
-        let p = match self {
-            Commands::AskAi{output_dir, ..} => {
-                output_dir.clone()
-            },
-        };
-        let mut path = PathBuf::from(p);
-        if let Some(child) = dir {
-            let child_name = PathBuf::from(&child);
-            path = path.join(child_name);
-        } else {
-
-        }
-
-        path.to_str().map(|s|s.to_string())
-    }
-}
 
 
 pub fn main() -> Result<(), AssistantError> {
@@ -108,36 +72,43 @@ pub fn main() -> Result<(), AssistantError> {
 
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
-    let prompt = &args.command.get_prompt()?;
-    //let prompt = std::fs::read_to_string(&args.command.get_prompt()?);
 
     let settings = Settings::default();
     let updated_settings = Settings {
-        flags: (args, config, prompt.clone()),
+        flags: (args, config),
         ..settings
     };
 
-    Model::run(updated_settings);
+    Ok(Model::run(updated_settings)?)
 
-    Ok(())
 }
 
 
 
-#[derive(Debug, Clone)]
-struct Model {
-    env: Cli,
-    client: Option<Client<OpenAIConfig>>,
-    thread: Option<ThreadObject>,
-    assistant: Option<AssistantObject>,
-}
 
 
 #[derive(Debug, Clone)]
 enum Message {
-    Connected(
-        Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
+    Connected(Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
+    OpenPromptFile,
+    OpenInputFile,
+    PromptFileOpened(Result<(PathBuf, Arc<String>), Error>),
+    InputFileOpened(Result<(PathBuf, Arc<String>), Error>),
+    ActionPerformed(text_editor::Action),
+
 }
+
+#[derive(Debug)]
+struct Model {
+    env: Cli,
+    client: Option<Client<OpenAIConfig>>,
+    access: Option<(ThreadObject, AssistantObject)>,
+    prompt: text_editor::Content,
+    input: text_editor::Content,
+    result: text_editor::Content,
+    is_loading: bool,
+}
+
 
 #[derive(Error, Clone, Debug)]
 pub enum AssistantError {
@@ -147,6 +118,12 @@ pub enum AssistantError {
     AppAccessError,
 }
 
+impl From<iced::Error> for AssistantError {
+    fn from(err: iced::Error) -> AssistantError {
+        dbg!(err);
+        AssistantError::AppAccessError
+    }
+}
 
 impl From<openai_api::OpenAIApiError> for AssistantError {
     fn from(error: openai_api::OpenAIApiError) -> AssistantError {
@@ -170,28 +147,26 @@ impl From<config::ConfigError> for AssistantError {
 
 
 
-
-async fn connect(config: OpenAi, name: String, prompt: String )
-                 -> Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>{
-    let client = openai_api::create_opeai_client(config);
-    let (th, ass)
-        = openai_api::setup_assistant(name, &client, prompt).await?;
-    Ok((client, th, ass))
-}
-
-
-
 impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, String);
+    type Flags = (Cli, OpenAi);
 
-    fn new(flags: (Cli, OpenAi, String)) -> (Model, Command<Message>) {
-        let name = flags.0.name.clone();
+    fn new(flags: (Cli, OpenAi)) -> (Model, Command<Message>) {
+        let prompt_file = PathBuf::from(&flags.0.prompt_file);
+        let input_file = PathBuf::from(&flags.0.input_file);
         (
-            Model {env: flags.0, client: None, thread: None, assistant: None},
-            Command::perform(connect(flags.1, name, flags.2 ), Message::Connected),
+            Model {env: flags.0, client: None, access: None,
+                prompt: text_editor::Content::new(),
+                input: text_editor::Content::new(),
+                result: text_editor::Content::new(),
+                is_loading: false,
+            },
+            Command::batch(vec![
+                Command::perform(load_file(prompt_file), Message::PromptFileOpened),
+                Command::perform(load_file(input_file), Message::InputFileOpened),
+            ])
         )
     }
 
@@ -202,27 +177,99 @@ impl Application for Model {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Connected(val) => {
-                println!("{:?}", val);
+                match val {
+                    Ok((c, t, a)) => {
+                        self.access = Some((t, a));
+                        self.client = Some(c);
+                        Command::none()
+                    },
+                    Err(err) => Command::none(),
+
+                }
+            },
+            Message::OpenPromptFile =>{
+                if self.is_loading {
+                    Command::none()
+                } else {
+                    self.is_loading = true;
+                    Command::perform(open_file(), Message::PromptFileOpened)
+                }
+            },
+            Message::OpenInputFile =>{
+                if self.is_loading {
+                    Command::none()
+                } else {
+                    self.is_loading = true;
+                    Command::perform(open_file(), Message::InputFileOpened)
+                }
+            },
+            Message::PromptFileOpened(result) => {
+                self.is_loading = false;
+                if let Ok((path, contents)) = result {
+                    self.prompt = text_editor::Content::with_text(&contents);
+                }
+                Command::none()
+            },
+            Message::InputFileOpened(result) => {
+                self.is_loading = false;
+                if let Ok((path, contents)) = result {
+                    self.input = text_editor::Content::with_text(&contents);
+                }
+                Command::none()
+            },
+            Message::ActionPerformed(action) => {
+                self.input.perform(action);
                 Command::none()
             },
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let content = "asdf";
-
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
-            .into()
+        row![
+            column![
+                text_editor(&self.prompt),
+                text_editor(&self.input)
+                .on_action(Message::ActionPerformed),
+            ],
+            text_editor(&self.result),
+        ].into()
     }
 }
+async fn open_file() -> Result<(PathBuf, Arc<String>), Error> {
+    let picked_file = rfd::AsyncFileDialog::new()
+        .set_title("Open a text file...")
+        .pick_file()
+        .await
+        .ok_or(Error::DialogClosed)?;
+
+    load_file(picked_file.path().to_owned()).await
+}
+
+async fn load_file(path: PathBuf) -> Result<(PathBuf, Arc<String>), Error> {
+    let contents = tokio::fs::read_to_string(&path)
+        .await
+        .map(Arc::new)
+        .map_err(|error| Error::IoError(error.kind()))?;
+
+    Ok((path, contents))
+}
+
+
+
+async fn connect(config: OpenAi, name: String, prompt: String )
+                 -> Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>{
+    let client = openai_api::create_opeai_client(config);
+    let (th, ass)
+        = openai_api::setup_assistant(name, &client, prompt).await?;
+    Ok((client, th, ass))
+}
+
 
 #[derive(Debug, Clone)]
 enum Error {
     APIError,
+    DialogClosed,
+    IoError(io::ErrorKind),
 }
 
 impl From<reqwest::Error> for Error {

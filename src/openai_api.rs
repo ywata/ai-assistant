@@ -67,13 +67,13 @@ pub trait Saver {
 
 
 pub async fn main_action<S>(client:&Client<OpenAIConfig>,
-                                 thread:&ThreadObject, assistant:&AssistantObject,
-                         input:&String,
-                         out_dir: &String,
-                         saver : S)
-    -> Result<(), OpenAIApiError>
-where
-    S: Saver
+                            thread:&ThreadObject, assistant:&AssistantObject,
+                            input:&String,
+                            out_dir: &String,
+                            saver : S)
+                            -> Result<(), OpenAIApiError>
+    where
+        S: Saver
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
@@ -167,6 +167,99 @@ where
 
 
     Ok(())
+}
+
+pub async fn ask(client: Client<OpenAIConfig>,
+                            thread: ThreadObject, assistant: AssistantObject,
+                            input: String)
+                            -> Result<String, OpenAIApiError>
+{
+    let query = [("limit", "1")]; //limit the list responses to 1 message
+
+    let assistant_id = &assistant.id;
+
+    //create a message for the thread
+    let message = CreateMessageRequestArgs::default()
+        .role("user")
+        .content(input.clone())
+        .build()?;
+
+    //attach message to the thread
+    let _message_obj = client
+        .threads()
+        .messages(&thread.id)
+        .create(message)
+        .await?;
+
+    //create a run for the thread
+    let run_request = CreateRunRequestArgs::default()
+        .assistant_id(assistant_id)
+        .build()?;
+    let run = client
+        .threads()
+        .runs(&thread.id)
+        .create(run_request)
+        .await?;
+
+    //wait for the run to complete
+    let mut awaiting_response = true;
+    while awaiting_response {
+        //retrieve the run
+        let run = client
+            .threads()
+            .runs(&thread.id)
+            .retrieve(&run.id)
+            .await?;
+        //check the status of the run
+        match run.status {
+            RunStatus::Completed => {
+                awaiting_response = false;
+                // once the run is completed we
+                // get the response from the run
+                // which will be the first message
+                // in the thread
+
+                //retrieve the response from the run
+                let response = client
+                    .threads()
+                    .messages(&thread.id)
+                    .list(&query)
+                    .await?;
+                //get the message id from the response
+                let message_id = response
+                    .data.get(0).unwrap()
+                    .id.clone();
+                //get the message from the response
+                let message = client
+                    .threads()
+                    .messages(&thread.id)
+                    .retrieve(&message_id)
+                    .await?;
+                //get the content from the message
+                let content = message
+                    .content.get(0).unwrap();
+
+                //get the text from the content
+                let text = match content {
+                    MessageContent::Text(text) => text.text.value.clone(),
+                    MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
+                };
+                //print the text
+                println!("--- Response: {}", &text);
+                return Ok(text.clone());
+
+
+            }
+            RunStatus::Failed => {
+                awaiting_response = false;
+                println!("--- Run Failed: {:#?}", run);
+            }
+            otherwise => report_status(otherwise),
+        }
+    }
+
+
+    Ok(String::from("???"))
 }
 
 

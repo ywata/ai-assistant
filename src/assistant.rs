@@ -74,9 +74,12 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
 
+    let prompt = fs::read_to_string(&args.prompt_file)?;
+
+
     let settings = Settings::default();
     let updated_settings = Settings {
-        flags: (args, config),
+        flags: (args, config, prompt),
         ..settings
     };
 
@@ -94,6 +97,8 @@ enum Message {
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
+    AskAi,
+    Answered(Result<String, OpenAIApiError>),
 }
 
 #[derive(Debug)]
@@ -185,22 +190,24 @@ impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi);
+    type Flags = (Cli, OpenAi, String);
 
-    fn  new(flags: (Cli, OpenAi)) -> (Model, Command<Message>) {
+    fn  new(flags: (Cli, OpenAi, String)) -> (Model, Command<Message>) {
         let prompt_path = PathBuf::from(&flags.0.prompt_file);
         let input_path = PathBuf::from(&flags.0.input_file);
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
-
+        let name = flags.0.name.clone();
         (
             Model {env: flags.0, client: None, access: None,
                    edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
                 Command::perform(load_file(AreaIndex::Prompt, prompt_path), Message::FileOpened),
-                Command::perform(load_file(AreaIndex::Input, input_path), Message::FileOpened)])
+                Command::perform(load_file(AreaIndex::Input, input_path), Message::FileOpened),
+                Command::perform(connect(flags.1.clone(), name, flags.2.clone()), Message::Connected)
+            ])
         )
     }
 
@@ -213,6 +220,7 @@ impl Application for Model {
             Message::Connected(val) => {
                 match val {
                     Ok((c, t, a)) => {
+                        println!("Connected: {:?}", (&c, &t));
                         self.access = Some((t, a));
                         self.client = Some(c);
                         Command::none()
@@ -241,6 +249,31 @@ impl Application for Model {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             },
+            Message::AskAi => {
+                let input = self.edit_areas[AreaIndex::Input as usize].content.text();
+                println!("{}", &input);
+                let thread = self.access.as_ref().unwrap().0.clone();
+                let assistant = self.access.as_ref().unwrap().1.clone();
+                let client = self.client.as_ref().unwrap().clone();
+                Command::perform(openai_api::ask(client, thread, assistant,
+                                                 self.edit_areas[AreaIndex::Input as usize].content.text()),
+                                 Message::Answered)
+            },
+            Message::Answered(res) => {
+                match res {
+                    Ok(text) =>{
+                        let content = text_editor::Content::with_text(&text);
+                        let default = EditArea::default();
+                        self.edit_areas[AreaIndex::Result as usize] = EditArea{
+                            content: content,
+                            ..default
+                        };
+
+                    }
+                    _ => println!("FAILED"),
+                }
+                Command::none()
+            }
         }
     }
 
@@ -253,7 +286,11 @@ impl Application for Model {
                 text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
                   .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
             ],
-            text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content),
+            column![
+                button("ask ai")
+                .on_press(Message::AskAi)
+                , text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content),
+                ]
         ].into()
     }
 }
@@ -281,8 +318,7 @@ async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<S
 async fn connect(config: OpenAi, name: String, prompt: String )
                  -> Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>{
     let client = openai_api::create_opeai_client(config);
-    let (th, ass)
-        = openai_api::setup_assistant(name, &client, prompt).await?;
+    let (th, ass) = openai_api::setup_assistant(name, &client, prompt).await?;
     Ok((client, th, ass))
 }
 

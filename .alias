@@ -1,0 +1,7 @@
+function build-docker() {
+  docker build docker --tag rust-sharp
+}
+
+function run-docker() {
+  docker run -v $PWD:/home/docker -it rust-sharp 
+}

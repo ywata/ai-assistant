@@ -3,10 +3,9 @@ use std::path::{PathBuf};
 use std::sync::Arc;
 
 use iced::widget::{self,
-                   column, container, image, row,
-                   text, text_editor};
+                   column, row, text_editor};
 use iced::{
-    Application, Command, Element, Length, Settings, Theme,
+    Application, Command, Element, Settings, Theme,
 };
 use async_openai::{
     config::OpenAIConfig,
@@ -16,8 +15,8 @@ use async_openai::types::{AssistantObject, ThreadObject};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
-use serde::{Deserialize};
-use openai_api::{OpenAi, Saver, OpenAIApiError};
+
+use openai_api::{OpenAi, OpenAIApiError};
 //use thiserror::Error;
 pub mod config;
 
@@ -124,11 +123,11 @@ impl EditArea {
     fn default_path(self, path: &String) -> Self{
         let default: EditArea = EditArea::default();
         let pbuf : PathBuf = PathBuf::from(path);
-        let edit_area = EditArea{
+        
+        EditArea{
             path: Some(pbuf),
             ..default
-        };
-        edit_area
+        }
     }
 }
 
@@ -225,11 +224,11 @@ impl Application for Model {
                         self.client = Some(c);
                         Command::none()
                     },
-                    Err(err) => Command::none(),
+                    Err(_err) => Command::none(),
 
                 }
             },
-            Message::OpenFile(idx) => {
+            Message::OpenFile(_idx) => {
 
                 Command::none()
             },
@@ -239,7 +238,7 @@ impl Application for Model {
                     let default = EditArea::default();
                     self.edit_areas[idx as usize] = EditArea{
                         path: Some(path),
-                        content: content,
+                        content,
                         ..default
                     };
                 }
@@ -265,7 +264,7 @@ impl Application for Model {
                         let content = text_editor::Content::with_text(&text);
                         let default = EditArea::default();
                         self.edit_areas[AreaIndex::Result as usize] = EditArea{
-                            content: content,
+                            content,
                             ..default
                         };
 

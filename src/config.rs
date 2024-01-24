@@ -31,8 +31,7 @@ pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
 }
 
 pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:&String, yaml_string: &String) -> Result<T, ConfigError> {
-    let config: Result<BTreeMap<String, T>, ConfigError> = serde_yaml::from_str(yaml_string)
-        .or_else(|_|Err(UnexpectedKey));
+    let config: Result<BTreeMap<String, T>, ConfigError> = serde_yaml::from_str(yaml_string).map_err(|_| UnexpectedKey);
     let map = config?;
 
     map.get(key).cloned().ok_or(ConversionFailed)
@@ -47,10 +46,9 @@ pub fn get_env<T:for<'a>Deserialize<'a> + Clone>(key:&String, name: &String) -> 
     let mut env_name = String::from(key);
     env_name.push('_');
     env_name.push_str(name);
-    let env_var = env::var(env_name)
-        .or_else(|_|Err(EnvNotFound));
+    let env_var = env::var(env_name).map_err(|_| EnvNotFound);
     let result: Result<T, ConfigError>
-        = env_var.and_then(|str| serde_yaml::from_str(&str).or_else(|_|Err(UnexpectedKey)));
+        = env_var.and_then(|str| serde_yaml::from_str(&str).map_err(|_| UnexpectedKey));
     result
 }
 

@@ -33,7 +33,7 @@ pub fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
 
             //create a client
             let client = Client::with_config(oai_config);
-            return client;
+            client
         }
     }
 }
@@ -128,7 +128,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                     .await?;
                 //get the message id from the response
                 let message_id = response
-                    .data.get(0).unwrap()
+                    .data.first().unwrap()
                     .id.clone();
                 //get the message from the response
                 let message = client
@@ -138,7 +138,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                     .await?;
                 //get the content from the message
                 let content = message
-                    .content.get(0).unwrap();
+                    .content.first().unwrap();
 
                 //get the text from the content
                 let text = match content {
@@ -148,7 +148,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                 //print the text
                 println!("--- Response: {}", &text);
 
-                let _save_action = saver.save(out_dir, text).await?;
+                saver.save(out_dir, text).await?;
 
 
             }
@@ -227,7 +227,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
                     .await?;
                 //get the message id from the response
                 let message_id = response
-                    .data.get(0).unwrap()
+                    .data.first().unwrap()
                     .id.clone();
                 //get the message from the response
                 let message = client
@@ -237,7 +237,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
                     .await?;
                 //get the content from the message
                 let content = message
-                    .content.get(0).unwrap();
+                    .content.first().unwrap();
 
                 //get the text from the content
                 let text = match content {

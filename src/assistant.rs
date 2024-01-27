@@ -36,8 +36,6 @@ struct Cli {
     input_file: String,
     #[arg(long)]
     output_dir: String,
-    #[arg(long)]
-    markers: Option<Vec<String>>,
 
     #[clap(subcommand)]
     command: Commands,
@@ -46,10 +44,25 @@ struct Cli {
 
 #[derive(Clone, Debug, Subcommand)]
 enum Commands {
-    AskAi,
-
+    AskAi{
+        #[arg(long)]
+        markers: Option<Vec<String>>,
+    }
 }
 
+impl Default for Commands {
+    fn default() -> Self {
+        Commands::AskAi {markers: None}
+    }
+}
+
+impl Cli {
+    fn get_markers(&self) -> Option<Vec<String>>{
+        match &self.command {
+            Commands::AskAi{markers: m} => m.clone(),
+        }
+    }
+}
 
 impl Default for Cli {
     fn default() -> Self {
@@ -59,8 +72,7 @@ impl Default for Cli {
             input_file: "input.txt".to_string(),
             prompt_file: "prompt.txt".to_string(),
             output_dir: "output".to_string(),
-            markers:None,
-            command: Commands::AskAi
+            command: Commands::default(),
         }
     }
 }
@@ -69,7 +81,7 @@ impl Default for Cli {
 
 pub fn main() -> Result<(), AssistantError> {
     let args = Cli::parse();
-
+    println!("{:?}", args);
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
 
@@ -219,7 +231,6 @@ impl Application for Model {
             Message::Connected(val) => {
                 match val {
                     Ok((c, t, a)) => {
-                        println!("Connected: {:?}", (&c, &t));
                         self.access = Some((t, a));
                         self.client = Some(c);
                         Command::none()
@@ -260,8 +271,31 @@ impl Application for Model {
             },
             Message::Answered(res) => {
                 match res {
+
                     Ok(text) =>{
-                        let content = text_editor::Content::with_text(&text);
+                        let option_markers = self.env.get_markers();
+                        let code = match option_markers {
+                            None => {
+                                &text
+                            },
+                            Some(markers) => {
+                                let contents = split_code(&text, &markers);
+                                let mut result = "";
+                                let mark_found = false;
+                                for c in contents {
+                                    match c {
+                                        Mark::Marker{text:_} => (),
+                                        Mark::Content{text} => {
+                                            result = text;
+                                            break;
+                                        }
+                                    }
+                                }
+                                result
+                            }
+                        };
+
+                        let content = text_editor::Content::with_text(&code);
                         let default = EditArea::default();
                         self.edit_areas[AreaIndex::Result as usize] = EditArea{
                             content,
@@ -339,4 +373,85 @@ impl From<reqwest::Error> for Error {
 
 fn button(text: &str) -> widget::Button<'_, Message> {
     widget::button(text).padding(1)
+}
+
+
+#[derive(Debug, PartialEq)]
+enum Mark<'a> {
+    Marker{text: &'a str},
+    Content{text: &'a str},
+}
+
+fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
+    let mut curr_pos:usize = 0;
+    let max = source.len();
+    let mut result = Vec::new();
+
+    for marker in markers {
+        if let Some(pos) = source[curr_pos..max].find(marker.as_str()) {
+            if 0 != pos {
+                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)]});
+                curr_pos += pos;
+            }
+            // Only marker exists from start.
+            result.push(Mark::Marker{text: &source[curr_pos..(curr_pos + marker.len())]});
+            curr_pos = curr_pos + marker.len();
+        } else {
+            // not marker found. This might be a error.
+        }
+
+    }
+    if curr_pos < max {
+        result.push(Mark::Content{text: &source[curr_pos..max]});
+    }
+    result
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_split_mark_only() {
+        let input = r#"```start
+```"#.to_string();
+        let markers = vec!["```start".to_string(), "```".to_string()];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start"}));
+        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n"}));
+        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```"}));
+    }
+    #[test]
+    fn test_split_mark_backquotes() {
+        let input = r#"```start
+asdf
+```"#.to_string();
+        let markers = vec!["```start```".to_string()];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```"}));
+    }
+
+    #[test]
+    fn test_split_mark_and_content() {
+        let input = r#"asdf
+```start
+hjklm
+```
+xyzw
+"#.to_string();
+        let markers = vec!["```start".to_string(), "```".to_string()];
+
+        let res = split_code(&input, &markers);
+        assert_eq!(res.len(), 5);
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n"}));
+        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start"}));
+        assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n"}));
+        assert_eq!(res.get(3), Some(&Mark::Marker{text:"```"}));
+        assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n"}));
+
+    }
 }

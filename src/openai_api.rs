@@ -32,8 +32,8 @@ pub fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
                 .with_api_key(token);
 
             //create a client
-            let client = Client::with_config(oai_config);
-            client
+            
+            Client::with_config(oai_config)
         }
     }
 }

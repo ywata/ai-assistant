@@ -281,7 +281,6 @@ impl Application for Model {
                             Some(markers) => {
                                 let contents = split_code(&text, &markers);
                                 let mut result = "";
-                                let mark_found = false;
                                 for c in contents {
                                     match c {
                                         Mark::Marker{text:_} => (),
@@ -295,7 +294,7 @@ impl Application for Model {
                             }
                         };
 
-                        let content = text_editor::Content::with_text(&code);
+                        let content = text_editor::Content::with_text(code);
                         let default = EditArea::default();
                         self.edit_areas[AreaIndex::Result as usize] = EditArea{
                             content,
@@ -327,15 +326,8 @@ impl Application for Model {
         ].into()
     }
 }
-/*async fn open_file<T: Copy>(idx: T) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
-    let picked_file = rfd::AsyncFileDialog::new()
-        .set_title("Open a text file...")
-        .pick_file()
-        .await
-        .ok_or((idx, Error::DialogClosed))?;
 
-    load_file(idx, picked_file.path().to_owned()).await
-}*/
+
 
 async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
     let contents = tokio::fs::read_to_string(&path)
@@ -395,7 +387,7 @@ fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
             }
             // Only marker exists from start.
             result.push(Mark::Marker{text: &source[curr_pos..(curr_pos + marker.len())]});
-            curr_pos = curr_pos + marker.len();
+            curr_pos += marker.len();
         } else {
             // not marker found. This might be a error.
         }

@@ -1,6 +1,8 @@
-use std::{fs, io};
+use std::{error, fs, io};
 use std::path::{PathBuf};
 use std::sync::Arc;
+
+use regex::{Regex};
 
 use iced::widget::{self,
                    column, row, text_editor};
@@ -15,10 +17,12 @@ use async_openai::types::{AssistantObject, ThreadObject};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
+use serde::Deserialize;
 
 use openai_api::{OpenAi, OpenAIApiError};
 //use thiserror::Error;
 pub mod config;
+mod scenario;
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -57,10 +61,15 @@ impl Default for Commands {
 }
 
 impl Cli {
-    fn get_markers(&self) -> Option<Vec<String>>{
-        match &self.command {
-            Commands::AskAi{markers: m} => m.clone(),
-        }
+    fn get_markers(&self) -> Result<Vec<Regex>, regex::Error>{
+        let res = match &self.command {
+            Commands::AskAi{markers: Some(m)} => {
+                let v: Result<Vec<_>, _> = m.into_iter().map(|s| Regex::new(s)).into_iter().collect();
+                v
+            },
+            _ => Ok(vec![Regex::new("asdf").unwrap()]),
+        };
+        res
     }
 }
 
@@ -84,8 +93,8 @@ pub fn main() -> Result<(), AssistantError> {
     println!("{:?}", args);
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
-
     let prompt = fs::read_to_string(&args.prompt_file)?;
+    let markers = args.get_markers()?;
 
 
     let settings = Settings::default();
@@ -194,10 +203,14 @@ impl From<config::ConfigError> for AssistantError {
     }
 }
 
+impl From<regex::Error> for AssistantError {
+    fn from(error: regex::Error) -> AssistantError {
+        dbg!(error);
+        AssistantError::AppAccessError
+    }
+}
 
-
-
-impl Application for Model {
+impl Application for Model{
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
@@ -273,34 +286,39 @@ impl Application for Model {
                 match res {
 
                     Ok(text) =>{
-                        let option_markers = self.env.get_markers();
-                        let code = match option_markers {
-                            None => {
-                                &text
-                            },
-                            Some(markers) => {
-                                let contents = split_code(&text, &markers);
-                                let mut result = "";
+                        let markers = self.env.get_markers();
+                        let mut content = text_editor::Content::with_text("");
+                        let contents = split_code(&text, &markers.clone().unwrap());
+                        match markers {
+                            Ok(m) => {
                                 for c in contents {
                                     match c {
-                                        Mark::Marker{text:_} => (),
-                                        Mark::Content{text} => {
-                                            result = text;
+                                        Mark::Content{text, lang: Some("json") } => {
+                                            let response = serde_json::from_str::<Response>(text);
+                                            println!("{:?}", response);
+                                            if let Ok(resp) = response {
+                                                content = text_editor::Content::with_text(text);
+                                            }
+
                                             break;
                                         }
+                                        Mark::Content{text, lang: Some("fsharp") } => {
+                                            content = text_editor::Content::with_text(text);
+                                            break;
+                                        },
+                                        _ => (),
                                     }
-                                }
-                                result
-                            }
-                        };
+                                };
 
-                        let content = text_editor::Content::with_text(code);
+                            },
+                            _ => ()
+                        }
+
                         let default = EditArea::default();
                         self.edit_areas[AreaIndex::Result as usize] = EditArea{
                             content,
                             ..default
                         };
-
                     }
                     _ => println!("FAILED"),
                 }
@@ -347,6 +365,13 @@ async fn connect(config: OpenAi, name: String, prompt: String )
     Ok((client, th, ass))
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct Response {
+    missing: Vec<String>,
+    possible: Vec<String>,
+}
+
+
 
 #[derive(Debug, Clone)]
 enum Error {
@@ -370,32 +395,41 @@ fn button(text: &str) -> widget::Button<'_, Message> {
 
 #[derive(Debug, PartialEq)]
 enum Mark<'a> {
-    Marker{text: &'a str},
-    Content{text: &'a str},
+    Marker{text: &'a str, lang: Option<&'a str>,},
+    Content{text: &'a str, lang: Option<&'a str>, },
 }
 
-fn split_code<'a>(source:&'a str, markers:&Vec<String>) -> Vec<Mark<'a>> {
-    let mut curr_pos:usize = 0;
+fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
+    let mut curr_pos:usize = 0; // index to source
     let max = source.len();
     let mut result = Vec::new();
-
+    let mut lang = None;
     for marker in markers {
-        if let Some(pos) = source[curr_pos..max].find(marker.as_str()) {
+        // source is searched starting from curr_pos to max
+        if let Some(matched) = marker.captures(&source[curr_pos..max]) {
+            let all_matched = matched.get(0).unwrap();
+
+            let pos = all_matched.range().start; // position in [curr..pos.. <max]
             if 0 != pos {
-                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)]});
+                // As there is some text before marker, it becomes Content
+                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)], lang: lang});
                 curr_pos += pos;
             }
-            // Only marker exists from start.
-            result.push(Mark::Marker{text: &source[curr_pos..(curr_pos + marker.len())]});
-            curr_pos += marker.len();
+            let r = all_matched.range();
+            lang = matched.get(1).map(|m| m.as_str());
+            let len = r.end - r.start;
+
+            result.push(Mark::Marker{text: &source[curr_pos..curr_pos + len], lang: lang});
+            curr_pos += len;
         } else {
             // not marker found. This might be a error.
         }
 
     }
     if curr_pos < max {
-        result.push(Mark::Content{text: &source[curr_pos..max]});
+        result.push(Mark::Content{text: &source[curr_pos..max], lang: lang});
     }
+
     result
 }
 
@@ -407,13 +441,19 @@ mod test {
     fn test_split_mark_only() {
         let input = r#"```start
 ```"#.to_string();
-        let markers = vec!["```start".to_string(), "```".to_string()];
+        let markers = vec!["```(start)".to_string(), "```".to_string()];
+        let mut cli = Cli::default();
+        cli = Cli{
+            command: Commands::AskAi {markers: Some(markers)},
+            ..cli
+        };
+        let rex_markers= cli.get_markers();
 
-        let res = split_code(&input, &markers);
+        let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 3);
-        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start"}));
-        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n"}));
-        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```"}));
+        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start", lang: Some("start")}));
+        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n", lang: Some("start")}));
+        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```", lang: None}));
     }
     #[test]
     fn test_split_mark_backquotes() {
@@ -421,10 +461,15 @@ mod test {
 asdf
 ```"#.to_string();
         let markers = vec!["```start```".to_string()];
-
-        let res = split_code(&input, &markers);
+        let mut cli = Cli::default();
+        cli = Cli{
+            command: Commands::AskAi {markers: Some(markers)},
+            ..cli
+        };
+        let rex_markers= cli.get_markers();
+        let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```"}));
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```", lang: None}));
     }
 
     #[test]
@@ -435,15 +480,37 @@ hjklm
 ```
 xyzw
 "#.to_string();
-        let markers = vec!["```start".to_string(), "```".to_string()];
+        let markers = vec!["```(start)".to_string(), "```".to_string()];
+        let mut cli = Cli::default();
+        cli = Cli{
+            command: Commands::AskAi {markers: Some(markers)},
+            ..cli
+        };
+        let rex_markers= cli.get_markers();
 
-        let res = split_code(&input, &markers);
+        let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 5);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n"}));
-        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start"}));
-        assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n"}));
-        assert_eq!(res.get(3), Some(&Mark::Marker{text:"```"}));
-        assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n"}));
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n", lang: None}));
+        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start", lang: Some("start")}));
+        assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n", lang: Some("start")}));
+        assert_eq!(res.get(3), Some(&Mark::Marker{text:"```", lang: None}));
+        assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n", lang: None}));
 
+    }
+    #[test]
+    fn test_regex() {
+        let rex_str = r#"^([a-zA-Z]+)[0-9]+"#;
+        let rex = Regex::new(rex_str).unwrap();
+
+        let input = r#"abcd123x"#;
+
+        if let Some(m1) = rex.captures(input) {
+            let g0 = m1.get(0).unwrap().as_str();
+            let g1 = m1.get(1).unwrap().as_str();
+            assert_eq!(g0, "abcd123");
+            assert_eq!(g1, "abcd");
+            return;
+        }
+        assert_eq!(true, false);
     }
 }

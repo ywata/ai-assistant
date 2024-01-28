@@ -289,7 +289,6 @@ impl Application for Model{
             },
             Message::AskAi => {
                 let input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                println!("{}", &input);
                 let thread = self.access.as_ref().unwrap().0.clone();
                 let assistant = self.access.as_ref().unwrap().1.clone();
                 let client = self.client.as_ref().unwrap().clone();
@@ -298,6 +297,7 @@ impl Application for Model{
                                  Message::Answered)
             },
             Message::Answered(res) => {
+                let mut command = Command::none();
                 match res {
 
                     Ok(text) =>{
@@ -312,7 +312,6 @@ impl Application for Model{
                                     match c {
                                         Mark::Content{text, lang: Some(matcher) } => {
                                             if matcher == json {
-                                                println!("json:{:?}", text);
                                                 let response = serde_json::from_str::<Response>(&text);
                                                 if let Ok(_resp) = response {
                                                     content = text_editor::Content::with_text(&text);
@@ -320,11 +319,10 @@ impl Application for Model{
 
                                                 break;
                                             } else if matcher == fsharp {
-                                                println!("fsharp:{:?}", text);
                                                 content = text_editor::Content::with_text(&text);
                                                 let mut path = PathBuf::from(&self.env.output_dir);
                                                 path.push("sample.fs");
-                                                Command::perform(save_and_compile(path, text), Message::Compiled);
+                                                command = Command::perform(save_and_compile(path, text), Message::Compiled);
                                                 break;
                                             } else {
                                                 //
@@ -346,9 +344,12 @@ impl Application for Model{
                     }
                     _ => println!("FAILED"),
                 }
+                command
+            },
+            Message::Compiled(msg) => {
+                println!("{:?}", msg);
                 Command::none()
             },
-            Message::Compiled(_) => Command::none(),
 
         }
     }

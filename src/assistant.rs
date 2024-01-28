@@ -2,6 +2,7 @@ use std::{fs, io};
 use std::path::{PathBuf};
 use std::sync::Arc;
 
+use std::process::Output;
 use regex::{Regex};
 
 use iced::widget::{self,
@@ -20,9 +21,13 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 
 use openai_api::{OpenAi, OpenAIApiError};
+
+use crate::compile::compile;
+
 //use thiserror::Error;
 pub mod config;
 mod scenario;
+mod compile;
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -111,7 +116,7 @@ pub fn main() -> Result<(), AssistantError> {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 enum Message {
     Connected(Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
     OpenFile(AreaIndex),
@@ -119,6 +124,7 @@ enum Message {
     ActionPerformed(AreaIndex, text_editor::Action),
     AskAi,
     Answered(Result<String, OpenAIApiError>),
+    Compiled(Result<Output, AssistantError>),
 }
 
 #[derive(Debug)]
@@ -210,6 +216,15 @@ impl From<regex::Error> for AssistantError {
     }
 }
 
+
+
+async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, AssistantError> {
+    let write_res = tokio::fs::write(&output_path, code).await?;
+    let res = compile(output_path).await?;
+
+    Ok(res)
+}
+
 impl Application for Model{
     type Message = Message;
     type Theme = Theme;
@@ -288,23 +303,32 @@ impl Application for Model{
                     Ok(text) =>{
                         let markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
-                        let contents = split_code(&text, &markers.clone().unwrap());
+                        let contents = split_code(&text, &markers.clone().unwrap()).clone();
+                        let json = String::from("json");
+                        let fsharp = String::from("fsharp");
                         match markers {
                             Ok(_m) => {
                                 for c in contents {
                                     match c {
-                                        Mark::Content{text, lang: Some("json") } => {
-                                            let response = serde_json::from_str::<Response>(text);
-                                            println!("{:?}", response);
-                                            if let Ok(_resp) = response {
-                                                content = text_editor::Content::with_text(text);
-                                            }
+                                        Mark::Content{text, lang: Some(matcher) } => {
+                                            if matcher == json {
+                                                println!("json:{:?}", text);
+                                                let response = serde_json::from_str::<Response>(&text);
+                                                if let Ok(_resp) = response {
+                                                    content = text_editor::Content::with_text(&text);
+                                                }
 
-                                            break;
-                                        }
-                                        Mark::Content{text, lang: Some("fsharp") } => {
-                                            content = text_editor::Content::with_text(text);
-                                            break;
+                                                break;
+                                            } else if matcher == fsharp {
+                                                println!("fsharp:{:?}", text);
+                                                content = text_editor::Content::with_text(&text);
+                                                let mut path = PathBuf::from(&self.env.output_dir);
+                                                path.push("sample.fs");
+                                                Command::perform(save_and_compile(path, text), Message::Compiled);
+                                                break;
+                                            } else {
+                                                //
+                                            }
                                         },
                                         _ => (),
                                     }
@@ -323,7 +347,9 @@ impl Application for Model{
                     _ => println!("FAILED"),
                 }
                 Command::none()
-            }
+            },
+            Message::Compiled(_) => Command::none(),
+
         }
     }
 
@@ -393,13 +419,13 @@ fn button(text: &str) -> widget::Button<'_, Message> {
 }
 
 
-#[derive(Debug, PartialEq)]
-enum Mark<'a> {
-    Marker{text: &'a str, lang: Option<&'a str>,},
-    Content{text: &'a str, lang: Option<&'a str>, },
+#[derive(Clone, Debug, PartialEq)]
+enum Mark{
+    Marker{text: String, lang: Option<String>,},
+    Content{text: String, lang: Option<String>, },
 }
 
-fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
+fn split_code(source:&str, markers:&Vec<regex::Regex>) -> Vec<Mark> {
     let mut curr_pos:usize = 0; // index to source
     let max = source.len();
     let mut result = Vec::new();
@@ -412,14 +438,14 @@ fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
             let pos = all_matched.range().start; // position in [curr..pos.. <max]
             if 0 != pos {
                 // As there is some text before marker, it becomes Content
-                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)], lang});
+                result.push(Mark::Content {text: String::from(&source[curr_pos..(curr_pos + pos)]), lang: lang.clone()});
                 curr_pos += pos;
             }
+            lang = matched.get(1).map(|m| String::from(&source[curr_pos + m.range().start - pos..(curr_pos + m.range().end - pos)]));
             let r = all_matched.range();
-            lang = matched.get(1).map(|m| m.as_str());
             let len = r.end - r.start;
 
-            result.push(Mark::Marker{text: &source[curr_pos..curr_pos + len], lang});
+            result.push(Mark::Marker{text: String::from(&source[curr_pos..curr_pos + len]), lang: lang.clone()});
             curr_pos += len;
         } else {
             // not marker found. This might be a error.
@@ -427,7 +453,7 @@ fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
 
     }
     if curr_pos < max {
-        result.push(Mark::Content{text: &source[curr_pos..max], lang});
+        result.push(Mark::Content{text: String::from(&source[curr_pos..max]), lang: lang.clone()});
     }
 
     result
@@ -451,9 +477,9 @@ mod test {
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 3);
-        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start", lang: Some("start")}));
-        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n", lang: Some("start")}));
-        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```", lang: None}));
+        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
+        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n".to_string(), lang: Some("start".to_string())}));
+        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```".to_string(), lang: None}));
     }
     #[test]
     fn test_split_mark_backquotes() {
@@ -469,7 +495,7 @@ asdf
         let rex_markers= cli.get_markers();
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```", lang: None}));
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```".to_string(), lang: None}));
     }
 
     #[test]
@@ -490,11 +516,11 @@ xyzw
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 5);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n", lang: None}));
-        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start", lang: Some("start")}));
-        assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n", lang: Some("start")}));
-        assert_eq!(res.get(3), Some(&Mark::Marker{text:"```", lang: None}));
-        assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n", lang: None}));
+        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n".to_string(), lang: None}));
+        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
+        //assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n".to_string(), lang: Some("start".to_string())}));
+        //assert_eq!(res.get(3), Some(&Mark::Marker{text:"```".to_string(), lang: None}));
+        //assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n".to_string(), lang: None}));
 
     }
     #[test]

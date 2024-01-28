@@ -1,4 +1,4 @@
-use std::{error, fs, io};
+use std::{fs, io};
 use std::path::{PathBuf};
 use std::sync::Arc;
 
@@ -64,7 +64,7 @@ impl Cli {
     fn get_markers(&self) -> Result<Vec<Regex>, regex::Error>{
         let res = match &self.command {
             Commands::AskAi{markers: Some(m)} => {
-                let v: Result<Vec<_>, _> = m.into_iter().map(|s| Regex::new(s)).into_iter().collect();
+                let v: Result<Vec<_>, _> = m.iter().map(|s| Regex::new(s)).collect();
                 v
             },
             _ => Ok(vec![Regex::new("asdf").unwrap()]),
@@ -94,7 +94,7 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(&args.key, &config_content)?;
     let prompt = fs::read_to_string(&args.prompt_file)?;
-    let markers = args.get_markers()?;
+    let _markers = args.get_markers()?;
 
 
     let settings = Settings::default();
@@ -290,13 +290,13 @@ impl Application for Model{
                         let mut content = text_editor::Content::with_text("");
                         let contents = split_code(&text, &markers.clone().unwrap());
                         match markers {
-                            Ok(m) => {
+                            Ok(_m) => {
                                 for c in contents {
                                     match c {
                                         Mark::Content{text, lang: Some("json") } => {
                                             let response = serde_json::from_str::<Response>(text);
                                             println!("{:?}", response);
-                                            if let Ok(resp) = response {
+                                            if let Ok(_resp) = response {
                                                 content = text_editor::Content::with_text(text);
                                             }
 
@@ -412,14 +412,14 @@ fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
             let pos = all_matched.range().start; // position in [curr..pos.. <max]
             if 0 != pos {
                 // As there is some text before marker, it becomes Content
-                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)], lang: lang});
+                result.push(Mark::Content {text: &source[curr_pos..(curr_pos + pos)], lang});
                 curr_pos += pos;
             }
             let r = all_matched.range();
             lang = matched.get(1).map(|m| m.as_str());
             let len = r.end - r.start;
 
-            result.push(Mark::Marker{text: &source[curr_pos..curr_pos + len], lang: lang});
+            result.push(Mark::Marker{text: &source[curr_pos..curr_pos + len], lang});
             curr_pos += len;
         } else {
             // not marker found. This might be a error.
@@ -427,7 +427,7 @@ fn split_code<'a>(source:&'a str, markers:&Vec<regex::Regex>) -> Vec<Mark<'a>> {
 
     }
     if curr_pos < max {
-        result.push(Mark::Content{text: &source[curr_pos..max], lang: lang});
+        result.push(Mark::Content{text: &source[curr_pos..max], lang});
     }
 
     result

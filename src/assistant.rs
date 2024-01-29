@@ -219,7 +219,7 @@ impl From<regex::Error> for AssistantError {
 
 
 async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, AssistantError> {
-    let write_res = tokio::fs::write(&output_path, code).await?;
+    let _write_res = tokio::fs::write(&output_path, code).await?;
     let res = compile(output_path).await?;
 
     Ok(res)
@@ -288,7 +288,7 @@ impl Application for Model{
                 Command::none()
             },
             Message::AskAi => {
-                let input = self.edit_areas[AreaIndex::Input as usize].content.text();
+                let _input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 let thread = self.access.as_ref().unwrap().0.clone();
                 let assistant = self.access.as_ref().unwrap().1.clone();
                 let client = self.client.as_ref().unwrap().clone();

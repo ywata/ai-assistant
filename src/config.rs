@@ -30,15 +30,23 @@ pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
 
 }
 
-pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:&String, yaml_string: &String) -> Result<T, ConfigError> {
-    let config: Result<BTreeMap<String, T>, ConfigError> = serde_yaml::from_str(yaml_string).map_err(|_| UnexpectedKey);
-    let map = config?;
-
-    map.get(key).cloned().ok_or(ConversionFailed)
+pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, yaml_string: &String)
+    -> Result<T, ConfigError> {
+    match key {
+        None => {
+            serde_yaml::from_str(yaml_string).map_err(|_| ConversionFailed)
+        },
+        Some(key) => {
+            let config: Result<BTreeMap<String, T>, ConfigError>
+                = serde_yaml::from_str(yaml_string).map_err(|_| UnexpectedKey);
+            let map = config?;
+            map.get(key).cloned().ok_or(ConversionFailed)
+        },
+    }
 }
 
 
-pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:&String, contents: &String) -> Result<T, ConfigError>{
+pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, contents: &String) -> Result<T, ConfigError>{
     convert::<T>(key, contents)
 }
 
@@ -70,7 +78,21 @@ mod test{
            !Tag1
            user: someone
         "#.to_string();
-        let res = convert::<TestConfig>(&"key".to_string(), &input);
+        let res = convert::<TestConfig>(Some(&"key".to_string()), &input);
+        assert_eq!(res, Ok(TestConfig::Tag1{user: "someone".to_string()}));
+    }
+    #[test]
+    fn test_convert_no_key() {
+        #[derive(Deserialize, Debug, Clone, PartialEq)]
+        enum TestConfig {
+            Tag1{user:String},
+            Tag2{email:String},
+        }
+        let input = r#"
+        !Tag1
+        user: someone
+        "#.to_string();
+        let res = convert::<TestConfig>(None, &input);
         assert_eq!(res, Ok(TestConfig::Tag1{user: "someone".to_string()}));
     }
     #[test]
@@ -86,7 +108,21 @@ mod test{
            user: someone
            password: asdfasdf
         "#.to_string();
-        let res = convert::<TestConfig>(&"key".to_string(), &input);
+        let res = convert::<TestConfig>(Some(&"key".to_string()), &input);
+        assert_eq!(res, Err(ConfigError::ConversionFailed));
+    }
+    #[test]
+    fn test_convert_no_key_fail() {
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+        enum TestConfig {
+            Tag1{user:String},
+            Tag2{email:String}
+        }
+        let input = r#"
+        !Tag1
+        password: asdfasdf
+        "#.to_string();
+        let res = convert::<TestConfig>(None, &input);
         assert_eq!(res, Err(ConfigError::ConversionFailed));
     }
     #[test]
@@ -101,7 +137,7 @@ mod test{
            !Tag1
            - user: someone
         "#.to_string();
-        let res = convert::<TestConfig>(&"key".to_string(), &input);
+        let res = convert::<TestConfig>(Some(&"key".to_string()), &input);
         assert_eq!(res, Err(ConfigError::UnexpectedKey));
     }
 

@@ -23,6 +23,7 @@ use serde::Deserialize;
 use openai_api::{OpenAi, OpenAIApiError};
 
 use crate::compile::compile;
+use crate::scenario::Prompt;
 
 //use thiserror::Error;
 pub mod config;
@@ -41,8 +42,6 @@ struct Cli {
     name: String,
     #[arg(long)]
     prompt_file: String,
-    #[arg(long)]
-    input_file: String,
     #[arg(long)]
     output_dir: String,
 
@@ -83,7 +82,6 @@ impl Default for Cli {
         Cli {yaml:"service.yaml".to_string(),
             key:"openai".to_string(),
             name:"ai assistant".to_string(),
-            input_file: "input.txt".to_string(),
             prompt_file: "prompt.txt".to_string(),
             output_dir: "output".to_string(),
             command: Commands::default(),
@@ -97,8 +95,10 @@ pub fn main() -> Result<(), AssistantError> {
     let args = Cli::parse();
     println!("{:?}", args);
     let config_content = fs::read_to_string(&args.yaml)?;
-    let config: OpenAi = config::read_config(&args.key, &config_content)?;
-    let prompt = fs::read_to_string(&args.prompt_file)?;
+    let config: OpenAi = config::read_config(Some(&args.key), &config_content)?;
+    let prompt_content = fs::read_to_string(&args.prompt_file)?;
+    let prompt: Prompt = config::read_config(None, &prompt_content)?;
+
     let _markers = args.get_markers()?;
 
 
@@ -225,27 +225,51 @@ async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, A
     Ok(res)
 }
 
+fn get_content(contents: Vec<Mark>) -> Option<Mark> {
+    let mut res = None;
+    for c in contents {
+        match c {
+            Mark::Content {..} => {
+                res = Some(c);
+                break;
+            },
+            _ =>  (),
+        }
+    }
+    res
+}
+
 impl Application for Model{
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, String);
+    type Flags = (Cli, OpenAi, Prompt);
 
-    fn  new(flags: (Cli, OpenAi, String)) -> (Model, Command<Message>) {
+    fn  new(flags: (Cli, OpenAi, Prompt)) -> (Model, Command<Message>) {
         let prompt_path = PathBuf::from(&flags.0.prompt_file);
-        let input_path = PathBuf::from(&flags.0.input_file);
-        let prompt = EditArea::default();
-        let input = EditArea::default();
+        //let input_path = PathBuf::from(&flags.0.input_file);
+        let default = EditArea::default();
+        let content = text_editor::Content::with_text(&flags.2.instruction);
+        let mut prompt = EditArea{
+            content,
+            ..default
+        };
+        let default = EditArea::default();
+        println!("{}", &flags.2.inputs.get(0).unwrap().text);
+        let content = text_editor::Content::with_text(&flags.2.inputs.get(0).unwrap().text);
+        let mut input = EditArea{
+            content,
+            ..default
+        };
         let result = EditArea::default();
         let name = flags.0.name.clone();
+
         (
             Model {env: flags.0, client: None, access: None,
                    edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
-                Command::perform(load_file(AreaIndex::Prompt, prompt_path), Message::FileOpened),
-                Command::perform(load_file(AreaIndex::Input, input_path), Message::FileOpened),
-                Command::perform(connect(flags.1.clone(), name, flags.2.clone()), Message::Connected)
+                Command::perform(connect(flags.1.clone(), name, flags.2.instruction), Message::Connected)
             ])
         )
     }
@@ -301,39 +325,33 @@ impl Application for Model{
                 match res {
 
                     Ok(text) =>{
-                        let markers = self.env.get_markers();
+                        let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
-                        let contents = split_code(&text, &markers.clone().unwrap()).clone();
                         let json = String::from("json");
                         let fsharp = String::from("fsharp");
-                        match markers {
-                            Ok(_m) => {
-                                for c in contents {
-                                    match c {
-                                        Mark::Content{text, lang: Some(matcher) } => {
-                                            if matcher == json {
-                                                let response = serde_json::from_str::<Response>(&text);
-                                                if let Ok(_resp) = response {
-                                                    content = text_editor::Content::with_text(&text);
-                                                }
 
-                                                break;
-                                            } else if matcher == fsharp {
-                                                content = text_editor::Content::with_text(&text);
-                                                let mut path = PathBuf::from(&self.env.output_dir);
-                                                path.push("sample.fs");
-                                                command = Command::perform(save_and_compile(path, text), Message::Compiled);
-                                                break;
-                                            } else {
-                                                //
-                                            }
-                                        },
-                                        _ => (),
+
+                        match opt_markers {
+                            Ok(markers) => {
+                                let contents = split_code(&text, &markers.clone()).clone();
+                                if let Some(Mark::Content{text:text, lang: Some(matcher)}) = get_content(contents) {
+                                    if matcher == json {
+                                        let response = serde_json::from_str::<Response>(&text);
+                                        if let Ok(_resp) = response {
+                                            content = text_editor::Content::with_text(&text);
+                                        }
+                                    } else if matcher == fsharp {
+                                        content = text_editor::Content::with_text(&text);
+                                        let mut path = PathBuf::from(&self.env.output_dir);
+                                        path.push("sample.fs");
+                                        command = Command::perform(save_and_compile(path, text), Message::Compiled);
+                                    } else {
+                                        //
                                     }
-                                };
 
+                                }
                             },
-                            _ => ()
+                            _ => (),
                         }
 
                         let default = EditArea::default();
@@ -463,6 +481,7 @@ fn split_code(source:&str, markers:&Vec<regex::Regex>) -> Vec<Mark> {
 
 #[cfg(test)]
 mod test {
+    use crate::config::read_config;
     use super::*;
     #[test]
     fn test_split_mark_only() {
@@ -539,5 +558,19 @@ xyzw
             return;
         }
         assert_eq!(true, false);
+    }
+    #[test]
+    fn test_convert_prompt() {
+        let prompt_content = r#"
+        instruction: |
+          asdf
+          asdf
+        inputs:
+          - tag: abc
+            text: |
+             xyz
+        "#.to_string();
+        let prompt: Prompt = read_config(None, &prompt_content).unwrap();
+        assert_eq!(prompt.instruction, "asdf\nasdf\n".to_string());
     }
 }

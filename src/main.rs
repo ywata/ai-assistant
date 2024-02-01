@@ -296,7 +296,7 @@ async fn main() -> Result<(), AppError> {
     save_input(&output_directory, &"input.txt".to_string(), &inputs).await?;
 
     let config_content = fs::read_to_string(&args.yaml)?;
-    let config: OpenAi = config::read_config(&args.key, &config_content)?;
+    let config: OpenAi = config::read_config(Some(&args.key), &config_content)?;
     let client = create_opeai_client(config);
     //let (thread, assistant) = setup_assistant(args.name, &client, &instructions).await?;
     //let assistant_id = &assistant.id;

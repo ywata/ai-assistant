@@ -9,7 +9,6 @@ use chrono;
 use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
 use openai_api::{
-    create_opeai_client,
     OpenAi,
     Saver,
     OpenAIApiError,
@@ -297,7 +296,7 @@ async fn main() -> Result<(), AppError> {
 
     let config_content = fs::read_to_string(&args.yaml)?;
     let config: OpenAi = config::read_config(Some(&args.key), &config_content)?;
-    let client = create_opeai_client(config);
+    //let client = create_opeai_client(config);
     //let (thread, assistant) = setup_assistant(args.name, &client, &instructions).await?;
     //let assistant_id = &assistant.id;
 

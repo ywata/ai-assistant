@@ -16,6 +16,11 @@ use crate::OpenAIApiError::OpenAIAccessError;
 pub enum OpenAi {
     Token { token: String },
 }
+#[derive(Clone, Debug)]
+pub enum Conversation {
+    ToAi {message: String},
+    FromAi {message: String},
+}
 
 impl Default for OpenAi {
     fn default() -> Self {
@@ -23,8 +28,15 @@ impl Default for OpenAi {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Context {
+     client: Client<OpenAIConfig>,
+     thread:ThreadObject,
+     assistant: AssistantObject,
+     conversation: Vec<(Conversation)>,
+}
 
-pub fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
+fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
     match config {
         OpenAi::Token { token } => {
             let token = token.as_str();
@@ -38,8 +50,18 @@ pub fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
     }
 }
 
+pub async fn connect(config: OpenAi, name: String, prompt: String )
+                 -> Result<Context, OpenAIApiError> {
+    let client = create_opeai_client(config);
+    let (thread, assistant) = setup_assistant(name, &client, prompt).await?;
+    let context: Context = Context{client, thread, assistant, conversation:Vec::new()};
+    Ok(context)
 
-pub async fn setup_assistant(name: String, client: &Client<OpenAIConfig>, prompt: String)
+}
+
+
+
+async fn setup_assistant(name: String, client: &Client<OpenAIConfig>, prompt: String)
     -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
@@ -169,14 +191,17 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     Ok(())
 }
 
-pub async fn ask(client: Client<OpenAIConfig>,
-                            thread: ThreadObject, assistant: AssistantObject,
+pub async fn ask(context: Context,
+
                             input: String)
                             -> Result<String, OpenAIApiError>
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
-    let assistant_id = &assistant.id;
+    println!("--- User: {}", &input);
+    let assistant_id = &context.assistant.id;
+    let client = &context.client;
+    let thread_id = &context.thread.id;
 
     //create a message for the thread
     let message = CreateMessageRequestArgs::default()
@@ -187,7 +212,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
     //attach message to the thread
     let _message_obj = client
         .threads()
-        .messages(&thread.id)
+        .messages(&thread_id)
         .create(message)
         .await?;
 
@@ -197,7 +222,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
         .build()?;
     let run = client
         .threads()
-        .runs(&thread.id)
+        .runs(&thread_id)
         .create(run_request)
         .await?;
 
@@ -207,7 +232,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
         //retrieve the run
         let run = client
             .threads()
-            .runs(&thread.id)
+            .runs(&thread_id)
             .retrieve(&run.id)
             .await?;
         //check the status of the run
@@ -222,7 +247,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
                 //retrieve the response from the run
                 let response = client
                     .threads()
-                    .messages(&thread.id)
+                    .messages(&thread_id)
                     .list(&query)
                     .await?;
                 //get the message id from the response
@@ -232,7 +257,7 @@ pub async fn ask(client: Client<OpenAIConfig>,
                 //get the message from the response
                 let message = client
                     .threads()
-                    .messages(&thread.id)
+                    .messages(&thread_id)
                     .retrieve(&message_id)
                     .await?;
                 //get the content from the message

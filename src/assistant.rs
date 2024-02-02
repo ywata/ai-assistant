@@ -20,7 +20,10 @@ use thiserror::Error;
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 
-use openai_api::{OpenAi, OpenAIApiError};
+use openai_api::{
+    connect,
+    Context, OpenAi, OpenAIApiError
+};
 
 use crate::compile::compile;
 use crate::scenario::Prompt;
@@ -118,7 +121,7 @@ pub fn main() -> Result<(), AssistantError> {
 
 #[derive(Clone, Debug)]
 enum Message {
-    Connected(Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>),
+    Connected(Result<Context, OpenAIApiError>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
@@ -169,8 +172,7 @@ enum AreaIndex{
 #[derive(Debug)]
 struct Model {
     env: Cli,
-    client: Option<Client<OpenAIConfig>>,
-    access: Option<(ThreadObject, AssistantObject)>,
+    context: Option<Context>,
     edit_areas: Vec<EditArea>,
 }
 
@@ -265,7 +267,7 @@ impl Application for Model{
         let name = flags.0.name.clone();
 
         (
-            Model {env: flags.0, client: None, access: None,
+            Model {env: flags.0, context: None,
                    edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
@@ -280,16 +282,12 @@ impl Application for Model{
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::Connected(val) => {
-                match val {
-                    Ok((c, t, a)) => {
-                        self.access = Some((t, a));
-                        self.client = Some(c);
-                        Command::none()
-                    },
-                    Err(_err) => Command::none(),
-
-                }
+            Message::Connected(Ok(ctx)) => {
+                self.context = Some(ctx);
+                Command::none()
+            },
+            Message::Connected(Err(err)) => {
+                Command::none()
             },
             Message::OpenFile(_idx) => {
 
@@ -313,12 +311,14 @@ impl Application for Model{
             },
             Message::AskAi => {
                 let _input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                let thread = self.access.as_ref().unwrap().0.clone();
-                let assistant = self.access.as_ref().unwrap().1.clone();
-                let client = self.client.as_ref().unwrap().clone();
-                Command::perform(openai_api::ask(client, thread, assistant,
-                                                 self.edit_areas[AreaIndex::Input as usize].content.text()),
-                                 Message::Answered)
+                if let Some(context) = self.context.clone() {
+                    Command::perform(openai_api::ask(context,
+                                                     self.edit_areas[AreaIndex::Input as usize].content.text()),
+                                     Message::Answered)
+
+                } else {
+                    Command::none()
+                }
             },
             Message::Answered(res) => {
                 let mut command = Command::none();
@@ -403,12 +403,6 @@ async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<S
 
 
 
-async fn connect(config: OpenAi, name: String, prompt: String )
-                 -> Result<(Client<OpenAIConfig>, ThreadObject, AssistantObject), AssistantError>{
-    let client = openai_api::create_opeai_client(config);
-    let (th, ass) = openai_api::setup_assistant(name, &client, prompt).await?;
-    Ok((client, th, ass))
-}
 
 #[derive(Clone, Debug, Deserialize)]
 struct Response {

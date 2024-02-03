@@ -36,6 +36,28 @@ pub struct Context {
      conversation: Vec<(Conversation)>,
 }
 
+impl Context {
+    pub fn new(client: Client<OpenAIConfig>, thread:ThreadObject, assistant: AssistantObject) -> Self {
+        Context{client, thread, assistant, conversation:Vec::new()}
+    }
+    pub fn client(self) -> Client<OpenAIConfig> {
+        self.client
+    }
+    pub fn thread(self) -> ThreadObject {
+        self.thread
+    }
+    pub fn assistant(self) -> AssistantObject {
+        self.assistant
+    }
+    pub fn conversation(self) -> Vec<(Conversation)> {
+        self.conversation
+    }
+
+    pub fn add_conversation(&mut self, conversation: Conversation) {
+        self.conversation.push(conversation);
+    }
+}
+
 
 fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
     match config {

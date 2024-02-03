@@ -2,8 +2,6 @@ use std::{fs, io};
 use std::path::{PathBuf};
 use std::sync::{Arc};
 
-use std::borrow::Borrow;
-
 use std::process::Output;
 use regex::{Regex};
 
@@ -12,11 +10,7 @@ use iced::widget::{self,
 use iced::{
     Application, Command, Element, Settings, Theme,
 };
-use async_openai::{
-    config::OpenAIConfig,
-    Client,
-};
-use async_openai::types::{AssistantObject, ThreadObject};
+
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
@@ -153,18 +147,6 @@ impl Default for EditArea {
     }
 }
 
-impl EditArea {
-    fn default_path(self, path: &String) -> Self{
-        let default: EditArea = EditArea::default();
-        let pbuf : PathBuf = PathBuf::from(path);
-        
-        EditArea{
-            path: Some(pbuf),
-            ..default
-        }
-    }
-}
-
 
 #[derive(Debug, Copy, Clone)]
 enum AreaIndex{
@@ -264,8 +246,7 @@ impl Application for Model {
             content,
             ..default
         };
-        let default = EditArea::default();
-        let mut input = EditArea::default();
+        let input = EditArea::default();
         let result = EditArea::default();
         let name = flags.0.name.clone();
 
@@ -361,7 +342,7 @@ impl Application for Model {
                                 let json = String::from("json");
                                 let fsharp = String::from("fsharp");
 
-                                if let Some(Mark::Content{text:text, lang: Some(matcher)}) = get_content(contents) {
+                                if let Some(Mark::Content{text, lang: Some(matcher)}) = get_content(contents) {
                                     if matcher == json {
                                         let response = serde_json::from_str::<Response>(&text);
                                         if let Ok(_resp) = response {
@@ -443,7 +424,6 @@ struct Response {
 #[derive(Debug, Clone)]
 enum Error {
     APIError,
-    DialogClosed,
     IoError(io::ErrorKind),
 }
 

@@ -7,7 +7,6 @@ use thiserror::Error;
 use chrono;
 
 use clap::{Parser, Subcommand};
-use serde::{Serialize, Deserialize};
 use openai_api::{
     OpenAi,
     Saver,
@@ -238,14 +237,13 @@ async fn save_output(dir:&String, file:&String, text:&String, markers:&Option<Ve
     } else {
         let contents = split_code(text, markers.as_ref().unwrap());
 
-        let mut mark_found = false;
         for c in contents {
             match c {
-                Mark::Marker{text:_} => mark_found = true,
                 Mark::Content{text} => {
                     save_file(&dir, "output.fs", &text.to_string()).await?;
                     break;
                 }
+                _ => (),
             }
         }
     }

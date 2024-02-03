@@ -1,6 +1,8 @@
 use std::{fs, io};
 use std::path::{PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc};
+
+use std::borrow::Borrow;
 
 use std::process::Output;
 use regex::{Regex};
@@ -19,11 +21,9 @@ use thiserror::Error;
 
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
+use tokio::sync::Mutex;
 
-use openai_api::{
-    connect,
-    Context, OpenAi, OpenAIApiError
-};
+use openai_api::{connect, Context, Conversation, OpenAi, OpenAIApiError};
 
 use crate::compile::compile;
 use crate::scenario::Prompt;
@@ -176,7 +176,7 @@ enum AreaIndex{
 #[derive(Debug)]
 struct Model {
     env: Cli,
-    context: Option<Context>,
+    context: Option<Arc<Mutex<Context>>>,
     edit_areas: Vec<EditArea>,
 }
 
@@ -249,7 +249,7 @@ fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     res
 }
 
-impl Application for Model{
+impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
@@ -287,7 +287,7 @@ impl Application for Model{
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Connected(Ok(ctx)) => {
-                self.context = Some(ctx);
+                self.context = Some(Arc::new(Mutex::new(ctx)));
                 Command::none()
             },
             Message::OpenFile(_idx) => {
@@ -323,9 +323,16 @@ impl Application for Model{
                 Command::none()
             },
             Message::AskAi => {
-                let _input = self.edit_areas[AreaIndex::Input as usize].content.text();
+                let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 if let Some(context) = self.context.clone() {
-                    Command::perform(openai_api::ask(context,
+                    let pass_context = context.clone();
+                    let _handle = tokio::spawn(async move {
+                        let mut ctx = context.lock().await;
+                        let res = ctx.add_conversation(Conversation::ToAi { message: input });
+                        res
+                    });
+
+                    Command::perform(openai_api::ask(pass_context,
                                                      self.edit_areas[AreaIndex::Input as usize].content.text()),
                                      Message::Answered)
 
@@ -340,6 +347,14 @@ impl Application for Model{
                     Ok(text) =>{
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
+                        let context = self.context.clone().unwrap();
+                        let cloned_text = text.clone();
+                        let _handle = tokio::spawn(async move {
+                            let mut ctx = context.lock().await;
+                            let res = ctx.add_conversation(Conversation::FromAi { message: cloned_text });
+                            res
+                        });
+
                         match opt_markers {
                             Ok(markers) => {
                                 let contents = split_code(&text, &markers.clone()).clone();

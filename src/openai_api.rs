@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::{Arc};
 use async_openai::{
     types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
             RunStatus, MessageContent, CreateAssistantRequestArgs,
@@ -9,6 +10,7 @@ use async_openai::{
 };
 
 use serde::{Serialize, Deserialize};
+use tokio::sync::Mutex;
 use crate::OpenAIApiError::OpenAIAccessError;
 
 
@@ -77,9 +79,8 @@ pub async fn connect(config: OpenAi, name: String, prompt: String )
                  -> Result<Context, OpenAIApiError> {
     let client = create_opeai_client(config);
     let (thread, assistant) = setup_assistant(name, &client, prompt).await?;
-    let context: Context = Context{client, thread, assistant, conversation:Vec::new()};
+    let context: Context = Context::new(client, thread, assistant);
     Ok(context)
-
 }
 
 
@@ -214,28 +215,31 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     Ok(())
 }
 
-pub async fn ask(context: Context, input: String) -> Result<String, OpenAIApiError>
+pub async fn ask(context: Arc<Mutex<Context>>, input: String) -> Result<String, OpenAIApiError>
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
     println!("--- User: {}", &input);
-    let assistant_id = &context.assistant.id;
-    let client = &context.client;
-    let thread_id = &context.thread.id;
+    // TODO: handle locked state
+    let ctx = context.lock().await;
+    let client = ctx.client.clone();
+    let thread_id = ctx.thread.id.clone();
+    let assistant_id = ctx.assistant.id.clone();
+
 
     //create a message for the thread
     let message = CreateMessageRequestArgs::default()
         .role("user")
         .content(input.clone())
         .build()?;
-
+    println!("Create message request args: {:#?}", message);
     //attach message to the thread
     let _message_obj = client
         .threads()
         .messages(&thread_id)
         .create(message)
         .await?;
-
+    println!("message created");
     //create a run for the thread
     let run_request = CreateRunRequestArgs::default()
         .assistant_id(assistant_id)
@@ -245,7 +249,7 @@ pub async fn ask(context: Context, input: String) -> Result<String, OpenAIApiErr
         .runs(&thread_id)
         .create(run_request)
         .await?;
-
+    println!("Start waiting for response");
     //wait for the run to complete
     let mut awaiting_response = true;
     while awaiting_response {

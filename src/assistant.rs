@@ -32,13 +32,15 @@ mod compile;
 struct Cli {
     /// yaml file to store credentials
     #[arg(long)]
-    yaml: String,
+    config_file: String,
     #[arg(long)]
-    key: String,
+    config_key: String,
     #[arg(long)]
     name: String,
     #[arg(long)]
     prompt_file: String,
+    #[arg(long)]
+    prompt_key: String,
     #[arg(long)]
     output_dir: String,
     #[arg(long)]
@@ -78,10 +80,11 @@ impl Cli {
 
 impl Default for Cli {
     fn default() -> Self {
-        Cli {yaml:"service.yaml".to_string(),
-            key:"openai".to_string(),
+        Cli {config_file:"service.yaml".to_string(),
+            config_key:"openai".to_string(),
             name:"ai assistant".to_string(),
             prompt_file: "prompt.txt".to_string(),
+            prompt_key: "default".to_string(),
             output_dir: "output".to_string(),
             tag: "default".to_string(),
             command: Commands::default(),
@@ -94,10 +97,10 @@ impl Default for Cli {
 pub fn main() -> Result<(), AssistantError> {
     let args = Cli::parse();
     println!("{:?}", args);
-    let config_content = fs::read_to_string(&args.yaml)?;
-    let config: OpenAi = config::read_config(Some(&args.key), &config_content)?;
+    let config_content = fs::read_to_string(&args.config_file)?;
+    let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompt: Prompt = config::read_config(None, &prompt_content)?;
+    let prompt: Prompt = config::read_config(Some(&args.prompt_key), &prompt_content)?;
 
     let _markers = args.get_markers()?;
 

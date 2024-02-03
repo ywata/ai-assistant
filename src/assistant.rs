@@ -40,7 +40,7 @@ struct Cli {
     #[arg(long)]
     prompt_file: String,
     #[arg(long)]
-    prompt_key: String,
+    prompt_keys: Vec<String>,
     #[arg(long)]
     output_dir: String,
     #[arg(long)]
@@ -84,7 +84,7 @@ impl Default for Cli {
             config_key:"openai".to_string(),
             name:"ai assistant".to_string(),
             prompt_file: "prompt.txt".to_string(),
-            prompt_key: "default".to_string(),
+            prompt_keys: Vec::default(),
             output_dir: "output".to_string(),
             tag: "default".to_string(),
             command: Commands::default(),
@@ -100,14 +100,16 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompt: Prompt = config::read_config(Some(&args.prompt_key), &prompt_content)?;
+    let prompts = args.prompt_keys.iter()
+        .map(|k| config::read_config(Some(k), &prompt_content))
+        .collect::<Result<Vec<Prompt>, config::ConfigError>>()?;
 
     let _markers = args.get_markers()?;
 
 
     let settings = Settings::default();
     let updated_settings = Settings {
-        flags: (args, config, prompt),
+        flags: (args, config, prompts),
         ..settings
     };
 
@@ -238,13 +240,13 @@ impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, Prompt);
+    type Flags = (Cli, OpenAi, Vec<Prompt>);
 
-    fn  new(flags: (Cli, OpenAi, Prompt)) -> (Model, Command<Message>) {
+    fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         //let prompt_path = PathBuf::from(&flags.0.prompt_file);
         //let input_path = PathBuf::from(&flags.0.input_file);
         let default = EditArea::default();
-        let content = text_editor::Content::with_text(&flags.2.instruction);
+        let content = text_editor::Content::with_text(&flags.2.get(0).unwrap().instruction);
         let mut prompt = EditArea{
             content,
             ..default
@@ -258,8 +260,8 @@ impl Application for Model {
                    edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
-                Command::perform(connect(flags.1.clone(), name, flags.2.instruction.clone()), Message::Connected),
-                Command::perform(load_input(flags.2, flags.0.tag.clone()), Message::InputLoaded),
+                Command::perform(connect(flags.1.clone(), name, flags.2.get(0).unwrap().instruction.clone()), Message::Connected),
+                Command::perform(load_input(flags.2.get(0).unwrap().clone(), flags.0.tag.clone()), Message::InputLoaded),
             ])
         )
     }

@@ -36,6 +36,7 @@ pub struct Context {
      conversation: Vec<(Conversation)>,
 }
 
+
 fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
     match config {
         OpenAi::Token { token } => {
@@ -191,10 +192,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     Ok(())
 }
 
-pub async fn ask(context: Context,
-
-                            input: String)
-                            -> Result<String, OpenAIApiError>
+pub async fn ask(context: Context, input: String) -> Result<String, OpenAIApiError>
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 

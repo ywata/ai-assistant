@@ -47,6 +47,8 @@ struct Cli {
     prompt_file: String,
     #[arg(long)]
     output_dir: String,
+    #[arg(long)]
+    tag: String,
 
     #[clap(subcommand)]
     command: Commands,
@@ -63,7 +65,7 @@ enum Commands {
 
 impl Default for Commands {
     fn default() -> Self {
-        Commands::AskAi {markers: None}
+        Commands::AskAi {markers: None,}
     }
 }
 
@@ -87,6 +89,7 @@ impl Default for Cli {
             name:"ai assistant".to_string(),
             prompt_file: "prompt.txt".to_string(),
             output_dir: "output".to_string(),
+            tag: "default".to_string(),
             command: Commands::default(),
         }
     }
@@ -122,6 +125,7 @@ pub fn main() -> Result<(), AssistantError> {
 #[derive(Clone, Debug)]
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
+    InputLoaded(Option<String>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
@@ -227,6 +231,10 @@ async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, A
     Ok(res)
 }
 
+async fn load_input(prompt: Prompt, tag: String) -> Option<String> {
+    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| i.text.clone())
+}
+
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
     for c in contents {
@@ -248,7 +256,7 @@ impl Application for Model{
     type Flags = (Cli, OpenAi, Prompt);
 
     fn  new(flags: (Cli, OpenAi, Prompt)) -> (Model, Command<Message>) {
-        let prompt_path = PathBuf::from(&flags.0.prompt_file);
+        //let prompt_path = PathBuf::from(&flags.0.prompt_file);
         //let input_path = PathBuf::from(&flags.0.input_file);
         let default = EditArea::default();
         let content = text_editor::Content::with_text(&flags.2.instruction);
@@ -257,21 +265,17 @@ impl Application for Model{
             ..default
         };
         let default = EditArea::default();
-        println!("{}", &flags.2.inputs.get(0).unwrap().text);
-        let content = text_editor::Content::with_text(&flags.2.inputs.get(0).unwrap().text);
-        let mut input = EditArea{
-            content,
-            ..default
-        };
+        let mut input = EditArea::default();
         let result = EditArea::default();
         let name = flags.0.name.clone();
 
         (
-            Model {env: flags.0, context: None,
+            Model {env: flags.0.clone(), context: None,
                    edit_areas: vec![prompt, input, result]
             },
             Command::batch(vec![
-                Command::perform(connect(flags.1.clone(), name, flags.2.instruction), Message::Connected)
+                Command::perform(connect(flags.1.clone(), name, flags.2.instruction.clone()), Message::Connected),
+                Command::perform(load_input(flags.2, flags.0.tag.clone()), Message::InputLoaded),
             ])
         )
     }
@@ -286,11 +290,20 @@ impl Application for Model{
                 self.context = Some(ctx);
                 Command::none()
             },
-            Message::Connected(Err(err)) => {
-                Command::none()
-            },
             Message::OpenFile(_idx) => {
 
+                Command::none()
+            },
+            Message::Connected(Err(_)) | Message::InputLoaded(None)=> {
+                Command::none()
+            },
+
+            Message::InputLoaded(Some(text)) => {
+                let default = EditArea::default();
+                self.edit_areas[AreaIndex::Input as usize] = EditArea{
+                    content: text_editor::Content::with_text(&text),
+                    ..default
+                };
                 Command::none()
             },
             Message::FileOpened(result) => {
@@ -327,13 +340,12 @@ impl Application for Model{
                     Ok(text) =>{
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
-                        let json = String::from("json");
-                        let fsharp = String::from("fsharp");
-
-
                         match opt_markers {
                             Ok(markers) => {
                                 let contents = split_code(&text, &markers.clone()).clone();
+                                let json = String::from("json");
+                                let fsharp = String::from("fsharp");
+
                                 if let Some(Mark::Content{text:text, lang: Some(matcher)}) = get_content(contents) {
                                     if matcher == json {
                                         let response = serde_json::from_str::<Response>(&text);
@@ -384,7 +396,8 @@ impl Application for Model{
             column![
                 button("ask ai")
                 .on_press(Message::AskAi)
-                , text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content),
+                , text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
+                //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
                 ]
         ].into()
     }

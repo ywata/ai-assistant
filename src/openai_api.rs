@@ -35,7 +35,7 @@ pub struct Context {
      client: Client<OpenAIConfig>,
      thread:ThreadObject,
      assistant: AssistantObject,
-     conversation: Vec<(Conversation)>,
+     conversation: Vec<Conversation>,
 }
 
 impl Context {
@@ -51,7 +51,7 @@ impl Context {
     pub fn assistant(self) -> AssistantObject {
         self.assistant
     }
-    pub fn conversation(self) -> Vec<(Conversation)> {
+    pub fn conversation(self) -> Vec<Conversation> {
         self.conversation
     }
 

@@ -121,7 +121,7 @@ enum Message {
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
-    AskAi{name:String, tag: String},
+    QueryAi {name:String, tag: String},
     Answered(Result<(String, String), (String, OpenAIApiError)>),
     Compiled(Result<Output, AssistantError>),
 }
@@ -309,7 +309,7 @@ impl Application for Model {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             },
-            Message::AskAi{name, tag} => {
+            Message::QueryAi {name, tag} => {
                 let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
@@ -403,7 +403,7 @@ impl Application for Model {
                 list_inputs(&self.prompts).into_iter()
                 .map(|(name, tag)|
                     button(name.clone(), tag.clone())
-                    .on_press(Message::AskAi{name: name, tag: tag})
+                    .on_press(Message::QueryAi{name: name, tag: tag})
                     .into()))
         ].into()
     }

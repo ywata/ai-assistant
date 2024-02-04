@@ -1,12 +1,12 @@
 use std::{fs, io};
+use std::collections::HashMap;
 use std::path::{PathBuf};
 use std::sync::{Arc};
 
 use std::process::Output;
 use regex::{Regex};
 
-use iced::widget::{self,
-                   column, row, text_editor};
+use iced::widget::{self, Button, column, row, Text, text_editor};
 use iced::{
     Application, Command, Element, Settings, Theme,
 };
@@ -20,11 +20,10 @@ use tokio::sync::Mutex;
 use openai_api::{connect, Context, Conversation, OpenAi, OpenAIApiError};
 
 use crate::compile::compile;
-use crate::scenario::Prompt;
+use openai_api::scenario::Prompt;
 
 //use thiserror::Error;
 pub mod config;
-mod scenario;
 mod compile;
 
 #[derive(Clone, Debug, Parser)]
@@ -35,8 +34,6 @@ struct Cli {
     config_file: String,
     #[arg(long)]
     config_key: String,
-    #[arg(long)]
-    name: String,
     #[arg(long)]
     prompt_file: String,
     #[arg(long)]
@@ -82,7 +79,6 @@ impl Default for Cli {
     fn default() -> Self {
         Cli {config_file:"service.yaml".to_string(),
             config_key:"openai".to_string(),
-            name:"ai assistant".to_string(),
             prompt_file: "prompt.txt".to_string(),
             prompt_keys: Vec::default(),
             output_dir: "output".to_string(),
@@ -100,10 +96,7 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompts = args.prompt_keys.iter()
-        .map(|k| config::read_config(Some(k), &prompt_content))
-        .collect::<Result<Vec<Prompt>, config::ConfigError>>()?;
-
+    let prompts = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
 
 
@@ -124,12 +117,12 @@ pub fn main() -> Result<(), AssistantError> {
 #[derive(Clone, Debug)]
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
-    InputLoaded(Option<String>),
+    InputLoaded(Option<(String, String)>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
-    AskAi,
-    Answered(Result<String, OpenAIApiError>),
+    AskAi{name:String, tag: String},
+    Answered(Result<(String, String), (String, OpenAIApiError)>),
     Compiled(Result<Output, AssistantError>),
 }
 
@@ -163,6 +156,7 @@ enum AreaIndex{
 #[derive(Debug)]
 struct Model {
     env: Cli,
+    prompts: HashMap<String, openai_api::scenario::Prompt>,
     context: Option<Arc<Mutex<Context>>>,
     edit_areas: Vec<EditArea>,
 }
@@ -218,8 +212,11 @@ async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, A
     Ok(res)
 }
 
-async fn load_input(prompt: Prompt, tag: String) -> Option<String> {
-    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| i.text.clone())
+async fn load_input(prompt: Prompt, tag: String) -> Option<(String, String)> {
+    println!("tag:{:?}", &tag);
+
+    prompt.inputs.iter().find(|i| i.tag == tag)
+        .map(|i| (prompt.instruction.clone(), i.text.clone()))
 }
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
@@ -240,30 +237,24 @@ impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, Vec<Prompt>);
+    type Flags = (Cli, OpenAi, HashMap<String, openai_api::scenario::Prompt>);
 
     fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
-        //let prompt_path = PathBuf::from(&flags.0.prompt_file);
-        //let input_path = PathBuf::from(&flags.0.input_file);
         let default = EditArea::default();
-        let content = text_editor::Content::with_text(&flags.2.get(0).unwrap().instruction);
-        let mut prompt = EditArea{
-            content,
-            ..default
-        };
+        let target = flags.0.prompt_keys.get(0).unwrap();
+        let tag = flags.0.tag.clone();
+        let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
-        let name = flags.0.name.clone();
+        let mut commands = Vec::new();
+        commands.push(Command::perform(connect(flags.1.clone(), flags.0.prompt_keys.clone(), flags.2.clone()),
+                                       Message::Connected));
 
-        (
-            Model {env: flags.0.clone(), context: None,
-                   edit_areas: vec![prompt, input, result]
-            },
-            Command::batch(vec![
-                Command::perform(connect(flags.1.clone(), name, flags.2.get(0).unwrap().instruction.clone()), Message::Connected),
-                Command::perform(load_input(flags.2.get(0).unwrap().clone(), flags.0.tag.clone()), Message::InputLoaded),
-            ])
-        )
+        commands.push(Command::perform(load_input(flags.2.get(target).unwrap().clone(), tag),
+                                       Message::InputLoaded));
+
+
+        (Model {env: flags.0.clone(), prompts: flags.2.clone(), context: None, edit_areas: vec![prompt, input, result]}, Command::batch(commands))
     }
 
     fn title(&self) -> String {
@@ -273,21 +264,31 @@ impl Application for Model {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Connected(Ok(ctx)) => {
+                println!("Connected");
                 self.context = Some(Arc::new(Mutex::new(ctx)));
                 Command::none()
             },
             Message::OpenFile(_idx) => {
-
                 Command::none()
             },
-            Message::Connected(Err(_)) | Message::InputLoaded(None)=> {
+            Message::Connected(Err(_)) => {
+                Command::none()
+            },
+            | Message::InputLoaded(None) => {
+                println!("InputLoade:None");
                 Command::none()
             },
 
-            Message::InputLoaded(Some(text)) => {
+            Message::InputLoaded(Some((prompt, text))) => {
                 let default = EditArea::default();
+
                 self.edit_areas[AreaIndex::Input as usize] = EditArea{
                     content: text_editor::Content::with_text(&text),
+                    ..default
+                };
+                let default = EditArea::default();
+                self.edit_areas[AreaIndex::Prompt as usize] = EditArea{
+                    content: text_editor::Content::with_text(&prompt),
                     ..default
                 };
                 Command::none()
@@ -308,17 +309,18 @@ impl Application for Model {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             },
-            Message::AskAi => {
+            Message::AskAi{name, tag} => {
                 let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
+                    let pass_name = name.clone();
                     let _handle = tokio::spawn(async move {
                         let mut ctx = context.lock().await;
-                        let res = ctx.add_conversation(Conversation::ToAi { message: input });
+                        let res = ctx.add_conversation(name.clone(), Conversation::ToAi { message: input });
                         res
                     });
 
-                    Command::perform(openai_api::ask(pass_context,
+                    Command::perform(openai_api::ask(pass_context, pass_name,
                                                      self.edit_areas[AreaIndex::Input as usize].content.text()),
                                      Message::Answered)
 
@@ -329,15 +331,14 @@ impl Application for Model {
             Message::Answered(res) => {
                 let mut command = Command::none();
                 match res {
-
-                    Ok(text) =>{
+                    Ok((name, text)) =>{
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
                         let context = self.context.clone().unwrap();
                         let cloned_text = text.clone();
                         let _handle = tokio::spawn(async move {
                             let mut ctx = context.lock().await;
-                            let res = ctx.add_conversation(Conversation::FromAi { message: cloned_text });
+                            let res = ctx.add_conversation(name, Conversation::FromAi { message: cloned_text });
                             res
                         });
 
@@ -395,16 +396,26 @@ impl Application for Model {
                   .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
             ],
             column![
-                button("ask ai")
-                .on_press(Message::AskAi)
-                , text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
+                text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
                 //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
-                ]
+                ],
+            column(
+                list_inputs(&self.prompts).into_iter()
+                .map(|(name, tag)| button(name, tag).into()))
         ].into()
     }
 }
 
+fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
+    let mut items = Vec::new();
+    for (k, _) in prompts {
+        for i in prompts.get(k).unwrap().inputs.iter() {
+            items.push((k.clone(), i.tag.clone()));
 
+        }
+    }
+    items
+}
 
 async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
     let contents = tokio::fs::read_to_string(&path)
@@ -414,8 +425,6 @@ async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<S
 
     Ok((idx, (path.clone(), contents)))
 }
-
-
 
 
 #[derive(Clone, Debug, Deserialize)]
@@ -440,8 +449,10 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-fn button(text: &str) -> widget::Button<'_, Message> {
-    widget::button(text).padding(1)
+fn button<'a>(text: String, tag: String) -> widget::Button<'a, Message> {
+    let title = text.clone() + ":" + &tag;
+    Button::new(Text::new(title))
+        .on_press(Message::AskAi{name: text, tag: tag})
 }
 
 

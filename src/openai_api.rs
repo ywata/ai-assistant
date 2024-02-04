@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc};
 use async_openai::{
@@ -12,7 +13,10 @@ use async_openai::{
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 use crate::OpenAIApiError::OpenAIAccessError;
+use crate::scenario::Prompt;
 
+
+pub mod scenario;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OpenAi {
@@ -31,32 +35,35 @@ impl Default for OpenAi {
 }
 
 #[derive(Clone, Debug)]
+pub struct Interaction {
+    name: String,
+    thread: ThreadObject,
+    assistant: AssistantObject,
+    conversation: Vec<Conversation>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Context {
-     client: Client<OpenAIConfig>,
-     thread:ThreadObject,
-     assistant: AssistantObject,
-     conversation: Vec<Conversation>,
+    client: Client<OpenAIConfig>,
+    interactions: HashMap<String, Interaction>,
 }
 
 impl Context {
-    pub fn new(client: Client<OpenAIConfig>, thread:ThreadObject, assistant: AssistantObject) -> Self {
-        Context{client, thread, assistant, conversation:Vec::new()}
+    pub fn new(client: Client<OpenAIConfig>) -> Context {
+        Context {
+            client,
+            interactions: HashMap::default(),
+        }
     }
     pub fn client(self) -> Client<OpenAIConfig> {
         self.client
     }
-    pub fn thread(self) -> ThreadObject {
-        self.thread
-    }
-    pub fn assistant(self) -> AssistantObject {
-        self.assistant
-    }
-    pub fn conversation(self) -> Vec<Conversation> {
-        self.conversation
+    pub fn add_interaction(&mut self, name: String, interaction: Interaction) {
+        self.interactions.insert(name, interaction);
     }
 
-    pub fn add_conversation(&mut self, conversation: Conversation) {
-        self.conversation.push(conversation);
+    pub fn add_conversation(&mut self, name: String, conversation: Conversation) {
+        self.interactions.get_mut(&name).unwrap().conversation.push(conversation);
     }
 }
 
@@ -75,12 +82,30 @@ fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
     }
 }
 
-pub async fn connect(config: OpenAi, name: String, prompt: String )
+pub async fn connect(config: OpenAi, names: Vec<String>, prompts: HashMap<String, Prompt> )
                  -> Result<Context, OpenAIApiError> {
     let client = create_opeai_client(config);
-    let (thread, assistant) = setup_assistant(name, &client, prompt).await?;
-    let context: Context = Context::new(client, thread, assistant);
-    Ok(context)
+    let mut context: Context = Context::new(client);
+    let mut connection_setupped = false;
+    for key in names {
+        if let Some(prompt) = prompts.get(&key) {
+            let (thread, assistant)
+                = setup_assistant(key.clone(), &context.client, prompt.instruction.clone()).await?;
+            let interaction = Interaction {
+                name: key.clone(),
+                thread,
+                assistant,
+                conversation: Vec::default(),
+            };
+            context.add_interaction(key, interaction);
+            connection_setupped = true;
+        }
+    }
+    if connection_setupped {
+        Ok(context)
+    } else {
+        Err(OpenAIAccessError)
+    }
 }
 
 
@@ -215,100 +240,103 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     Ok(())
 }
 
-pub async fn ask(context: Arc<Mutex<Context>>, input: String) -> Result<String, OpenAIApiError>
-{
+pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> Result<(String, String), (String, OpenAIApiError)> {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
-    println!("--- User: {}", &input);
     // TODO: handle locked state
     let ctx = context.lock().await;
+    println!("{:?} {:?}", ctx, name);
     let client = ctx.client.clone();
-    let thread_id = ctx.thread.id.clone();
-    let assistant_id = ctx.assistant.id.clone();
+    let interaction = ctx.interactions.get(&name);
+    if let Some(interaction) = ctx.interactions.get(&name) {
+        let assistant_id = interaction.assistant.id.clone();
+        let thread_id = interaction.thread.id.clone();
 
 
     //create a message for the thread
-    let message = CreateMessageRequestArgs::default()
-        .role("user")
-        .content(input.clone())
-        .build()?;
-    println!("Create message request args: {:#?}", message);
-    //attach message to the thread
-    let _message_obj = client
-        .threads()
-        .messages(&thread_id)
-        .create(message)
-        .await?;
-    println!("message created");
-    //create a run for the thread
-    let run_request = CreateRunRequestArgs::default()
-        .assistant_id(assistant_id)
-        .build()?;
-    let run = client
-        .threads()
-        .runs(&thread_id)
-        .create(run_request)
-        .await?;
-    println!("Start waiting for response");
-    //wait for the run to complete
-    let mut awaiting_response = true;
-    while awaiting_response {
-        //retrieve the run
+        let message = CreateMessageRequestArgs::default()
+            .role("user")
+            .content(input.clone())
+            .build().map_err(|e| (name.clone(), e.into()))?;
+        println!("Create message request args: {:#?}", message);
+        //attach message to the thread
+        let _message_obj = client
+            .threads()
+            .messages(&thread_id)
+            .create(message)
+            .await.map_err(|_| (name.clone(), OpenAIApiError::OpenAIAccessError))?;
+        println!("messagne created");
+        //create a run for the thread
+        let run_request = CreateRunRequestArgs::default()
+            .assistant_id(assistant_id)
+            .build().map_err(|e| (name.clone(), e.into()))?;
         let run = client
             .threads()
             .runs(&thread_id)
-            .retrieve(&run.id)
-            .await?;
-        //check the status of the run
-        match run.status {
-            RunStatus::Completed => {
-                awaiting_response = false;
-                // once the run is completed we
-                // get the response from the run
-                // which will be the first message
-                // in the thread
+            .create(run_request)
+            .await.map_err(|e| (name.clone(), e.into()))?;
+        println!("Start waiting for response");
+        //wait for the run to complete
+        let mut awaiting_response = true;
+        while awaiting_response {
+            //retrieve the run
+            let run = client
+                .threads()
+                .runs(&thread_id)
+                .retrieve(&run.id)
+                .await.map_err(|e| (name.clone(), e.into()))?;
+            //check the status of the run
+            match run.status {
+                RunStatus::Completed => {
+                    awaiting_response = false;
+                    // once the run is completed we
+                    // get the response from the run
+                    // which will be the first message
+                    // in the thread
 
-                //retrieve the response from the run
-                let response = client
-                    .threads()
-                    .messages(&thread_id)
-                    .list(&query)
-                    .await?;
-                //get the message id from the response
-                let message_id = response
-                    .data.first().unwrap()
-                    .id.clone();
-                //get the message from the response
-                let message = client
-                    .threads()
-                    .messages(&thread_id)
-                    .retrieve(&message_id)
-                    .await?;
-                //get the content from the message
-                let content = message
-                    .content.first().unwrap();
+                    //retrieve the response from the run
+                    let response = client
+                        .threads()
+                        .messages(&thread_id)
+                        .list(&query)
+                        .await.map_err(|e| (name.clone(), e.into()))?;
+                    //get the message id from the response
+                    let message_id = response
+                        .data.first().unwrap()
+                        .id.clone();
+                    //get the message from the response
+                    let message = client
+                        .threads()
+                        .messages(&thread_id)
+                        .retrieve(&message_id)
+                        .await.map_err(|e| (name.clone(), e.into()))?;
+                    //get the content from the message
+                    let content = message
+                        .content.first().unwrap();
 
-                //get the text from the content
-                let text = match content {
-                    MessageContent::Text(text) => text.text.value.clone(),
-                    MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
-                };
-                //print the text
-                println!("--- Response: {}", &text);
-                return Ok(text.clone());
+                    //get the text from the content
+                    let text = match content {
+                        MessageContent::Text(text) => text.text.value.clone(),
+                        MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
+                    };
+                    //print the text
+                    println!("--- Response: {}", &text);
+                    return Ok((name, text.clone()));
+                },
 
+                RunStatus::Failed => {
+                    awaiting_response = false;
+                    println!("--- Run Failed: {:#?}", run);
+                }
 
+                otherwise => report_status(otherwise),
             }
-            RunStatus::Failed => {
-                awaiting_response = false;
-                println!("--- Run Failed: {:#?}", run);
-            }
-            otherwise => report_status(otherwise),
         }
+    } else {
+        panic!("No interaction found");
     }
 
-
-    Ok(String::from("???"))
+    Ok((name, String::from("???")))
 }
 
 

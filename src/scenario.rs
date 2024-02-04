@@ -52,4 +52,8 @@ impl Workflow {
     }
 }
 
-
+impl Default for Workflow {
+    fn default() -> Self {
+        Workflow { workflow: HashMap::new() }
+    }
+}

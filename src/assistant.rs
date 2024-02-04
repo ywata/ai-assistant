@@ -105,12 +105,12 @@ pub fn main() -> Result<(), AssistantError> {
         let workflow_content = fs::read_to_string(&file)?;
         config::read_config(None, &workflow_content)?
     } else {
-        Workflow::new(HashMap::new())
+        Workflow::default()
     };
 
     let settings = Settings::default();
     let updated_settings = Settings {
-        flags: (args, config, prompts),
+        flags: (args, config, prompts, workflow),
         ..settings
     };
 
@@ -133,6 +133,7 @@ enum Message {
     QueryAi {name: String, tag: String},
     Answered(Result<(String, String), (String, OpenAIApiError)>),
     Compiled(Result<Output, AssistantError>),
+    DoNothing,
 }
 
 #[derive(Debug)]
@@ -169,6 +170,7 @@ struct Model {
     context: Option<Arc<Mutex<Context>>>,
     edit_areas: Vec<EditArea>,
     current: (String, String),
+    workflow: Workflow,
 }
 
 
@@ -244,7 +246,7 @@ impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, HashMap<String, openai_api::scenario::Prompt>);
+    type Flags = (Cli, OpenAi, HashMap<String, openai_api::scenario::Prompt>, Workflow);
 
     fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         let name = flags.0.prompt_keys.first().unwrap();
@@ -263,7 +265,9 @@ impl Application for Model {
             prompts: flags.2.clone(),
             context: None,
             edit_areas: vec![prompt, input, result],
-            current:(name.clone(), tag.clone())},
+            current:(name.clone(), tag.clone()),
+            workflow: flags.3,
+        },
          Command::batch(commands))
     }
 
@@ -392,13 +396,14 @@ impl Application for Model {
                 println!("{:?}", msg);
                 Command::none()
             },
-
+            Message::DoNothing => {
+                Command::none()
+            },
         }
     }
 
     fn view(&self) -> Element<Message> {
         let  vec = &self.edit_areas;
-
         column![
             row![
                 row(
@@ -409,6 +414,8 @@ impl Application for Model {
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
+                    button("Next".to_string(), "".to_string())
+                      .on_press(load_message(&self.workflow, &self.current.0, &self.current.1)),
                     button("Ask AI".to_string(), "".to_string())
                         .on_press(Message::QueryAi{name: self.current.0.clone(), tag: self.current.1.clone()})
                     ].align_items(Alignment::End)
@@ -451,6 +458,14 @@ async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<S
     Ok((idx, (path.clone(), contents)))
 }
 
+fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
+    let directive = wf.get_directive(name, tag);
+    match directive {
+        Directive::KeepAsIs => Message::DoNothing,
+        Directive::JumpTo { name, tag } => Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
+        Directive::PassResultTo { name, tag } => Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 struct Response {
@@ -640,6 +655,5 @@ xyzw
         assert_eq!(workflow.get_directive("name1", "tag1"), Directive::KeepAsIs{});
         assert_eq!(workflow.get_directive("name1", "tag2"), Directive::JumpTo{name: "name1".to_string(), tag: "tag1".to_string()});
         assert_eq!(workflow.get_directive("name2", "tag3"), Directive::PassResultTo{name: "name2".to_string(), tag: "tag2".to_string()});
-
     }
 }

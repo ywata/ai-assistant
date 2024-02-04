@@ -139,7 +139,7 @@ pub trait Saver {
 
 pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                             thread:&ThreadObject, assistant:&AssistantObject,
-                            input:&String,
+                            input:&str,
                             out_dir: &String,
                             saver : S)
                             -> Result<(), OpenAIApiError>
@@ -247,7 +247,7 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
     let ctx = context.lock().await;
     println!("{:?} {:?}", ctx, name);
     let client = ctx.client.clone();
-    let interaction = ctx.interactions.get(&name);
+    let _interaction = ctx.interactions.get(&name);
     if let Some(interaction) = ctx.interactions.get(&name) {
         let assistant_id = interaction.assistant.id.clone();
         let thread_id = interaction.thread.id.clone();

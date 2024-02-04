@@ -224,12 +224,9 @@ async fn load_input(prompt: Prompt, tag: String) -> Option<(String, String)> {
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
     for c in contents {
-        match c {
-            Mark::Content {..} => {
-                res = Some(c);
-                break;
-            },
-            _ =>  (),
+        if let Mark::Content {..} = c {
+            res = Some(c);
+            break;
         }
     }
     res
@@ -242,19 +239,16 @@ impl Application for Model {
     type Flags = (Cli, OpenAi, HashMap<String, openai_api::scenario::Prompt>);
 
     fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
-        let default = EditArea::default();
-        let name = flags.0.prompt_keys.get(0).unwrap();
+        let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
-        let mut commands = Vec::new();
-        commands.push(Command::perform(connect(flags.1.clone(), flags.0.prompt_keys.clone(), flags.2.clone()),
-                                       Message::Connected));
-
-        commands.push(Command::perform(load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
-                                       Message::InputLoaded));
-
+        let commands = vec![
+            Command::perform(connect(flags.1.clone(), flags.0.prompt_keys.clone(), flags.2.clone()),
+                Message::Connected),
+            Command::perform(load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
+                Message::InputLoaded)];
 
         (Model {
             env: flags.0.clone(),
@@ -323,15 +317,14 @@ impl Application for Model {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             },
-            Message::QueryAi {name, tag} => {
+            Message::QueryAi {name,..} => {
                 let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
                     let _handle = tokio::spawn(async move {
                         let mut ctx = context.lock().await;
-                        let res = ctx.add_conversation(name.clone(), Conversation::ToAi { message: input });
-                        res
+                        ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })
                     });
 
                     Command::perform(openai_api::ask(pass_context, pass_name,
@@ -352,34 +345,29 @@ impl Application for Model {
                         let cloned_text = text.clone();
                         let _handle = tokio::spawn(async move {
                             let mut ctx = context.lock().await;
-                            let res = ctx.add_conversation(name, Conversation::FromAi { message: cloned_text });
-                            res
+                            ctx.add_conversation(name, Conversation::FromAi { message: cloned_text })
                         });
 
-                        match opt_markers {
-                            Ok(markers) => {
-                                let contents = split_code(&text, &markers.clone()).clone();
-                                let json = String::from("json");
-                                let fsharp = String::from("fsharp");
+                        if let Ok(markers) = opt_markers {
+                            let contents = split_code(&text, &markers.clone()).clone();
+                            let json = String::from("json");
+                            let fsharp = String::from("fsharp");
 
-                                if let Some(Mark::Content{text, lang: Some(matcher)}) = get_content(contents) {
-                                    if matcher == json {
-                                        let response = serde_json::from_str::<Response>(&text);
-                                        if let Ok(_resp) = response {
-                                            content = text_editor::Content::with_text(&text);
-                                        }
-                                    } else if matcher == fsharp {
+                            if let Some(Mark::Content{text, lang: Some(matcher)}) = get_content(contents) {
+                                if matcher == json {
+                                    let response = serde_json::from_str::<Response>(&text);
+                                    if let Ok(_resp) = response {
                                         content = text_editor::Content::with_text(&text);
-                                        let mut path = PathBuf::from(&self.env.output_dir);
-                                        path.push("sample.fs");
-                                        command = Command::perform(save_and_compile(path, text), Message::Compiled);
-                                    } else {
-                                        //
                                     }
-
+                                } else if matcher == fsharp {
+                                    content = text_editor::Content::with_text(&text);
+                                    let mut path = PathBuf::from(&self.env.output_dir);
+                                    path.push("sample.fs");
+                                    command = Command::perform(save_and_compile(path, text), Message::Compiled);
+                                } else {
+                                    //
                                 }
-                            },
-                            _ => (),
+                            }
                         }
 
                         let default = EditArea::default();
@@ -409,7 +397,7 @@ impl Application for Model {
                     list_inputs(&self.prompts).into_iter()
                     .map(|(name, tag)|
                         button(name.clone(), tag.clone())
-                        .on_press(Message::LoadInput{name: name, tag: tag})
+                        .on_press(Message::LoadInput{name, tag})
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
@@ -437,7 +425,7 @@ impl Application for Model {
 
 fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     let mut items = Vec::new();
-    for (k, _) in prompts {
+    for k in prompts.keys() {
         for i in prompts.get(k).unwrap().inputs.iter() {
             items.push((k.clone(), i.tag.clone()));
 

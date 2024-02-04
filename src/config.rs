@@ -26,11 +26,11 @@ pub enum Enforce {
 }
 
 pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
-    fn read_from_env(key:&String) -> Result<T, ConfigError>;
+    fn read_from_env(key:&str) -> Result<T, ConfigError>;
 
 }
 
-pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, yaml_string: &String)
+pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, yaml_string: &str)
     -> Result<T, ConfigError> {
     match key {
         None => {
@@ -46,11 +46,11 @@ pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, yaml_string:
 }
 
 
-pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, contents: &String) -> Result<T, ConfigError>{
+pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, contents: &str) -> Result<T, ConfigError>{
     convert::<T>(key, contents)
 }
 
-pub fn get_env<T:for<'a>Deserialize<'a> + Clone>(key:&String, name: &String) -> Result<T, ConfigError> {
+pub fn get_env<T:for<'a>Deserialize<'a> + Clone>(key:&str, name: &str) -> Result<T, ConfigError> {
     let mut env_name = String::from(key);
     env_name.push('_');
     env_name.push_str(name);

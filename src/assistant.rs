@@ -6,9 +6,9 @@ use std::sync::{Arc};
 use std::process::Output;
 use regex::{Regex};
 
-use iced::widget::{self, Button, column, row, Text, text_editor};
+use iced::widget::{self, Button, Text, column, horizontal_space, row, text_editor};
 use iced::{
-    Application, Command, Element, Settings, Theme,
+    Alignment, Application, Command, Element, Settings, Theme,
 };
 
 use thiserror::Error;
@@ -122,7 +122,7 @@ enum Message {
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
-    QueryAi {name:String, tag: String},
+    QueryAi {name: String, tag: String},
     Answered(Result<(String, String), (String, OpenAIApiError)>),
     Compiled(Result<Output, AssistantError>),
 }
@@ -160,6 +160,7 @@ struct Model {
     prompts: HashMap<String, openai_api::scenario::Prompt>,
     context: Option<Arc<Mutex<Context>>>,
     edit_areas: Vec<EditArea>,
+    current: (String, String),
 }
 
 
@@ -242,7 +243,7 @@ impl Application for Model {
 
     fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         let default = EditArea::default();
-        let target = flags.0.prompt_keys.get(0).unwrap();
+        let name = flags.0.prompt_keys.get(0).unwrap();
         let tag = flags.0.tag.clone();
         let prompt = EditArea::default();
         let input = EditArea::default();
@@ -251,11 +252,17 @@ impl Application for Model {
         commands.push(Command::perform(connect(flags.1.clone(), flags.0.prompt_keys.clone(), flags.2.clone()),
                                        Message::Connected));
 
-        commands.push(Command::perform(load_input(flags.2.get(target).unwrap().clone(), tag),
+        commands.push(Command::perform(load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
                                        Message::InputLoaded));
 
 
-        (Model {env: flags.0.clone(), prompts: flags.2.clone(), context: None, edit_areas: vec![prompt, input, result]}, Command::batch(commands))
+        (Model {
+            env: flags.0.clone(),
+            prompts: flags.2.clone(),
+            context: None,
+            edit_areas: vec![prompt, input, result],
+            current:(name.clone(), tag.clone())},
+         Command::batch(commands))
     }
 
     fn title(&self) -> String {
@@ -275,15 +282,14 @@ impl Application for Model {
             Message::Connected(Err(_)) => {
                 Command::none()
             },
-            | Message::InputLoaded(None) => {
-                println!("InputLoade:None");
-                Command::none()
-            },
             Message::LoadInput{name, tag} => {
+                // A bit too early, but let's do it for now.
+                self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 Command::perform(load_input(prompt, tag), Message::InputLoaded)
             },
             Message::InputLoaded(Some((prompt, text))) => {
+
                 let default = EditArea::default();
 
                 self.edit_areas[AreaIndex::Input as usize] = EditArea{
@@ -295,6 +301,10 @@ impl Application for Model {
                     content: text_editor::Content::with_text(&prompt),
                     ..default
                 };
+                Command::none()
+            },
+            | Message::InputLoaded(None) => {
+                println!("InputLoade:None");
                 Command::none()
             },
             Message::FileOpened(result) => {
@@ -392,23 +402,35 @@ impl Application for Model {
 
     fn view(&self) -> Element<Message> {
         let  vec = &self.edit_areas;
-        row![
-            column![
-                text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
-                  .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
-                text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
-                  .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
-            ],
-            column![
-                text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
-                //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
+
+        column![
+            row![
+                row(
+                    list_inputs(&self.prompts).into_iter()
+                    .map(|(name, tag)|
+                        button(name.clone(), tag.clone())
+                        .on_press(Message::LoadInput{name: name, tag: tag})
+                        .into())),
+                row![
+                    horizontal_space(iced::Length::Fill),
+                    button("Ask AI".to_string(), "".to_string())
+                        .on_press(Message::QueryAi{name: self.current.0.clone(), tag: self.current.1.clone()})
+                    ].align_items(Alignment::End)
+                .width(iced::Length::Fill),
+
                 ],
-            column(
-                list_inputs(&self.prompts).into_iter()
-                .map(|(name, tag)|
-                    button(name.clone(), tag.clone())
-                    .on_press(Message::LoadInput{name: name, tag: tag})
-                    .into()))
+            row![
+                column![
+                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
+                    .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
+                    text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
+                    .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
+                ],
+                column![
+                    text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
+                    //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
+                ],
+            ],
         ].into()
     }
 }

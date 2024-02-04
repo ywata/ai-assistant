@@ -401,7 +401,10 @@ impl Application for Model {
                 ],
             column(
                 list_inputs(&self.prompts).into_iter()
-                .map(|(name, tag)| button(name, tag).into()))
+                .map(|(name, tag)|
+                    button(name.clone(), tag.clone())
+                    .on_press(Message::AskAi{name: name, tag: tag})
+                    .into()))
         ].into()
     }
 }
@@ -452,7 +455,6 @@ impl From<reqwest::Error> for Error {
 fn button<'a>(text: String, tag: String) -> widget::Button<'a, Message> {
     let title = text.clone() + ":" + &tag;
     Button::new(Text::new(title))
-        .on_press(Message::AskAi{name: text, tag: tag})
 }
 
 

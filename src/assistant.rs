@@ -318,10 +318,10 @@ impl Application for Model {
                 Command::none()
             },
             Message::QueryAi {name,..} => {
-                let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
+                    let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                     let _handle = tokio::spawn(async move {
                         let mut ctx = context.lock().await;
                         ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })

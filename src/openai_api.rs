@@ -245,9 +245,8 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
 
     // TODO: handle locked state
     let ctx = context.lock().await;
-    println!("{:?} {:?}", ctx, name);
     let client = ctx.client.clone();
-    let _interaction = ctx.interactions.get(&name);
+
     if let Some(interaction) = ctx.interactions.get(&name) {
         let assistant_id = interaction.assistant.id.clone();
         let thread_id = interaction.thread.id.clone();

@@ -117,6 +117,7 @@ pub fn main() -> Result<(), AssistantError> {
 #[derive(Clone, Debug)]
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
+    LoadInput {name:String, tag: String},
     InputLoaded(Option<(String, String)>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
@@ -278,7 +279,10 @@ impl Application for Model {
                 println!("InputLoade:None");
                 Command::none()
             },
-
+            Message::LoadInput{name, tag} => {
+                let prompt = self.prompts.get(&name).unwrap().clone();
+                Command::perform(load_input(prompt, tag), Message::InputLoaded)
+            },
             Message::InputLoaded(Some((prompt, text))) => {
                 let default = EditArea::default();
 
@@ -403,7 +407,7 @@ impl Application for Model {
                 list_inputs(&self.prompts).into_iter()
                 .map(|(name, tag)|
                     button(name.clone(), tag.clone())
-                    .on_press(Message::QueryAi{name: name, tag: tag})
+                    .on_press(Message::LoadInput{name: name, tag: tag})
                     .into()))
         ].into()
     }

@@ -20,7 +20,7 @@ use tokio::sync::Mutex;
 use openai_api::{connect, Context, Conversation, OpenAi, OpenAIApiError};
 
 use crate::compile::compile;
-use openai_api::scenario::Prompt;
+use openai_api::scenario::{Prompt, Workflow, Directive};
 
 //use thiserror::Error;
 pub mod config;
@@ -38,6 +38,8 @@ struct Cli {
     prompt_file: String,
     #[arg(long)]
     prompt_keys: Vec<String>,
+    #[arg(long)]
+    workflow_file: Option<String>,
     #[arg(long)]
     output_dir: String,
     #[arg(long)]
@@ -81,6 +83,7 @@ impl Default for Cli {
             config_key:"openai".to_string(),
             prompt_file: "prompt.txt".to_string(),
             prompt_keys: Vec::default(),
+            workflow_file: None,
             output_dir: "output".to_string(),
             tag: "default".to_string(),
             command: Commands::default(),
@@ -98,7 +101,12 @@ pub fn main() -> Result<(), AssistantError> {
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
     let prompts = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
-
+    let workflow = if let Some(ref file) = args.workflow_file {
+        let workflow_content = fs::read_to_string(&file)?;
+        config::read_config(None, &workflow_content)?
+    } else {
+        Workflow::new(HashMap::new())
+    };
 
     let settings = Settings::default();
     let updated_settings = Settings {
@@ -606,5 +614,32 @@ xyzw
         "#.to_string();
         let prompt: Prompt = read_config(None, &prompt_content).unwrap();
         assert_eq!(prompt.instruction, "asdf\nasdf\n".to_string());
+    }
+
+    #[test]
+    fn test_convert_workflow() {
+        let workflow_content = r#"
+        !Workflow
+        workflow:
+          name1:
+            tag1:
+              !KeepAsIs
+            tag2:
+              !JumpTo
+              name: name1
+              tag: tag1
+          name2:
+             tag3:
+               !PassResultTo
+               name: name2
+               tag: tag2
+        "#.to_string();
+        let workflow: Result<Workflow, _> = read_config(None, &workflow_content);
+        //let workflow: Result<Workflow, _> = serde_yaml::from_str(&workflow_content);
+        let workflow = workflow.unwrap();
+        assert_eq!(workflow.get_directive("name1", "tag1"), Directive::KeepAsIs{});
+        assert_eq!(workflow.get_directive("name1", "tag2"), Directive::JumpTo{name: "name1".to_string(), tag: "tag1".to_string()});
+        assert_eq!(workflow.get_directive("name2", "tag3"), Directive::PassResultTo{name: "name2".to_string(), tag: "tag2".to_string()});
+
     }
 }

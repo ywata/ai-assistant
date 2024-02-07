@@ -71,7 +71,7 @@ impl Cli {
                 let v: Result<Vec<_>, _> = m.iter().map(|s| Regex::new(s)).collect();
                 v
             },
-            _ => Ok(vec![Regex::new("asdf").unwrap()]),
+            _ => Ok(vec![Regex::new("").unwrap()]),
         };
         res
     }
@@ -348,9 +348,11 @@ impl Application for Model {
                 }
             },
             Message::Answered(res) => {
+                println!("{:?}", res);
                 let mut command = Command::none();
                 match res {
                     Ok((name, text)) =>{
+                        println!("Ok");
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
                         let context = self.context.clone().unwrap();
@@ -361,9 +363,11 @@ impl Application for Model {
                         });
 
                         if let Ok(markers) = opt_markers {
+                            println!("Ok:markers:{:?}", markers);
                             let contents = split_code(&text, &markers.clone()).clone();
                             let json = String::from("json");
                             let fsharp = String::from("fsharp");
+                            //let text = String::from("text");
 
                             if let Some(Mark::Content{text, lang: Some(matcher)}) = get_content(contents) {
                                 if matcher == json {
@@ -379,7 +383,13 @@ impl Application for Model {
                                 } else {
                                     //
                                 }
+                            } else {
+                                println!("No: contents");
+                                content = text_editor::Content::with_text(&text);
                             }
+                        } else {
+                            println!("No: markers");
+                            content = text_editor::Content::with_text(&text);
                         }
 
                         let default = EditArea::default();
@@ -424,8 +434,9 @@ impl Application for Model {
                 ],
             row![
                 column![
-                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
+/*                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
                     .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
+ */
                     text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
                     .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
                 ],

@@ -20,8 +20,19 @@ pub mod scenario;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OpenAi {
-    Token { token: String },
+    OpenAiToken { token: String, model: String},
+    AzureAiToken { key: String, endpoint:String, model: String},
 }
+
+impl OpenAi {
+    fn get_model(&self) -> String {
+        match self {
+            OpenAi::OpenAiToken { model, .. } => model.clone(),
+            OpenAi::AzureAiToken { model, .. } => model.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Conversation {
     ToAi {message: String},
@@ -30,7 +41,7 @@ pub enum Conversation {
 
 impl Default for OpenAi {
     fn default() -> Self {
-        OpenAi::Token {token: "".to_string()}
+        OpenAi::OpenAiToken {token: "".to_string(), model: "".to_string()}
     }
 }
 
@@ -68,9 +79,9 @@ impl Context {
 }
 
 
-fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
+fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
     match config {
-        OpenAi::Token { token } => {
+        OpenAi::OpenAiToken { token,..} => {
             let token = token.as_str();
             let oai_config: OpenAIConfig = OpenAIConfig::default()
                 .with_api_key(token);
@@ -78,19 +89,29 @@ fn create_opeai_client(config: OpenAi) -> Client<OpenAIConfig> {
             //create a client
             
             Client::with_config(oai_config)
-        }
+        },
+        OpenAi::AzureAiToken { key, endpoint,.. } => {
+            let key = key.as_str();
+            let endpoint = endpoint.as_str();
+            let oai_config: OpenAIConfig = OpenAIConfig::default()
+                .with_api_key(key)
+                .with_api_base(endpoint);
+
+            //create a client
+            Client::with_config(oai_config)
+        },
     }
 }
 
 pub async fn connect(config: OpenAi, names: Vec<String>, prompts: HashMap<String, Prompt> )
                  -> Result<Context, OpenAIApiError> {
-    let client = create_opeai_client(config);
+    let client = create_opeai_client(&config);
     let mut context: Context = Context::new(client);
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
             let (thread, assistant)
-                = setup_assistant(key.clone(), &context.client, prompt.instruction.clone()).await?;
+                = setup_assistant(&config, &key, &context.client, &prompt.instruction).await?;
             let interaction = Interaction {
                 name: key.clone(),
                 thread,
@@ -110,7 +131,7 @@ pub async fn connect(config: OpenAi, names: Vec<String>, prompts: HashMap<String
 
 
 
-async fn setup_assistant(name: String, client: &Client<OpenAIConfig>, prompt: String)
+async fn setup_assistant(config: &OpenAi, name: &String, client: &Client<OpenAIConfig>, prompt: &String, )
     -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
@@ -118,12 +139,13 @@ async fn setup_assistant(name: String, client: &Client<OpenAIConfig>, prompt: St
 
     let assistant_name = name;
     let instructions = prompt;
+    let model = config.get_model();
 
     //create the assistant
     let assistant_request = CreateAssistantRequestArgs::default()
         .name(assistant_name)
         .instructions(instructions)
-        .model("gpt-3.5-turbo-1106")
+        .model(&model)
         .build()?;
     let assistant = client.assistants().create(assistant_request).await?;
     //get the id of the assistant

@@ -5,6 +5,7 @@ use serde::{Deserialize};
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Input{
     pub tag: String,
+    pub prefix: Option<String>,
     pub text: String,
 }
 #[derive(Clone, Debug, Default, Deserialize)]

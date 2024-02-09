@@ -126,7 +126,8 @@ pub fn main() -> Result<(), AssistantError> {
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
     LoadInput {name:String, tag: String},
-    InputLoaded(Option<(String, String)>),
+    PassResult{name:String, tag: String},
+    InputLoaded(Option<LoadedInput>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
@@ -224,11 +225,19 @@ async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, A
     Ok(res)
 }
 
-async fn load_input(prompt: Prompt, tag: String) -> Option<(String, String)> {
+#[derive(Debug, Clone)]
+struct LoadedInput {
+    prompt: String,
+    prefix: Option<String>,
+    input: String,
+}
+async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
     println!("tag:{:?}", &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag)
-        .map(|i| (prompt.instruction.clone(), i.text.clone()))
+        .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
+            prefix: i.prefix.clone(),
+            input: i.text.clone()}))
 }
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
@@ -294,12 +303,14 @@ impl Application for Model {
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 Command::perform(load_input(prompt, tag), Message::InputLoaded)
             },
-            Message::InputLoaded(Some((prompt, text))) => {
-
+            Message::PassResult{name, tag} => {
+                Command::perform(load_input(self.prompts.get(&name).unwrap().clone(), tag), Message::InputLoaded),
+            },
+            Message::InputLoaded(Some(LoadedInput{prompt, prefix, input:text})) => {
                 let default = EditArea::default();
-
+                let prefixed_text = prefix.unwrap_or_default() + "\n" + &text;
                 self.edit_areas[AreaIndex::Input as usize] = EditArea{
-                    content: text_editor::Content::with_text(&text),
+                    content: text_editor::Content::with_text(&prefixed_text),
                     ..default
                 };
                 let default = EditArea::default();
@@ -473,8 +484,10 @@ fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
     let directive = wf.get_directive(name, tag);
     match directive {
         Directive::KeepAsIs => Message::DoNothing,
-        Directive::JumpTo { name, tag } => Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
-        Directive::PassResultTo { name, tag } => Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
+        Directive::JumpTo { name, tag } =>
+            Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
+        Directive::PassResultTo { name, tag } =>
+            Message::PassResult { name: name.to_string(), tag: tag.to_string() },
     }
 }
 

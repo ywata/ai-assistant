@@ -304,7 +304,7 @@ impl Application for Model {
                 Command::perform(load_input(prompt, tag), Message::InputLoaded)
             },
             Message::PassResult{name, tag} => {
-                Command::perform(load_input(self.prompts.get(&name).unwrap().clone(), tag), Message::InputLoaded),
+                Command::perform(load_input(self.prompts.get(&name).unwrap().clone(), tag), Message::InputLoaded)
             },
             Message::InputLoaded(Some(LoadedInput{prompt, prefix, input:text})) => {
                 let default = EditArea::default();

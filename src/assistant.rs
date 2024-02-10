@@ -1,32 +1,29 @@
-use std::{fs, io};
 use std::collections::HashMap;
-use std::path::{PathBuf};
-use std::sync::{Arc};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::{fs, io};
 
+use regex::Regex;
 use std::process::Output;
-use regex::{Regex};
 
-use iced::widget::{self, Button, Text, column, horizontal_space, row, text_editor};
-use iced::{
-    Alignment, Application, Command, Element, Settings, Theme,
-};
+use iced::widget::{self, column, horizontal_space, row, text_editor, Button, Text};
+use iced::{Alignment, Application, Command, Element, Settings, Theme};
 
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
+use log::{debug, error, info, trace};
 use serde::Deserialize;
 use tokio::sync::Mutex;
-use log::{error, info, debug, trace};
 
-
-use openai_api::{connect, Context, Conversation, create_opeai_client, OpenAi, OpenAIApiError};
+use openai_api::{connect, create_opeai_client, Context, Conversation, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use openai_api::scenario::{Prompt, Workflow, Directive};
+use openai_api::scenario::{Directive, Prompt, Workflow};
 
 //use thiserror::Error;
-pub mod config;
 mod compile;
+pub mod config;
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -51,28 +48,27 @@ struct Cli {
     command: Commands,
 }
 
-
 #[derive(Clone, Debug, Subcommand)]
 enum Commands {
-    AskAi{
+    AskAi {
         #[arg(long)]
         markers: Option<Vec<String>>,
-    }
+    },
 }
 
 impl Default for Commands {
     fn default() -> Self {
-        Commands::AskAi {markers: None,}
+        Commands::AskAi { markers: None }
     }
 }
 
 impl Cli {
-    fn get_markers(&self) -> Result<Vec<Regex>, regex::Error>{
+    fn get_markers(&self) -> Result<Vec<Regex>, regex::Error> {
         let res = match &self.command {
-            Commands::AskAi{markers: Some(m)} => {
+            Commands::AskAi { markers: Some(m) } => {
                 let v: Result<Vec<_>, _> = m.iter().map(|s| Regex::new(s)).collect();
                 v
-            },
+            }
             _ => Ok(vec![]),
         };
         res
@@ -81,8 +77,9 @@ impl Cli {
 
 impl Default for Cli {
     fn default() -> Self {
-        Cli {config_file:"service.yaml".to_string(),
-            config_key:"openai".to_string(),
+        Cli {
+            config_file: "service.yaml".to_string(),
+            config_key: "openai".to_string(),
             prompt_file: "prompt.txt".to_string(),
             prompt_keys: Vec::default(),
             workflow_file: None,
@@ -92,8 +89,6 @@ impl Default for Cli {
         }
     }
 }
-
-
 
 pub fn main() -> Result<(), AssistantError> {
     env_logger::init();
@@ -119,23 +114,18 @@ pub fn main() -> Result<(), AssistantError> {
     };
 
     Ok(Model::run(updated_settings)?)
-
 }
-
-
-
-
 
 #[derive(Clone, Debug)]
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
-    LoadInput {name:String, tag: String},
-    PassResult{name:String, tag: String},
+    LoadInput { name: String, tag: String },
+    PassResult { name: String, tag: String },
     InputLoaded(Option<LoadedInput>),
     OpenFile(AreaIndex),
     FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
-    QueryAi {name: String, tag: String},
+    QueryAi { name: String, tag: String },
     Answered(Result<(String, String), (String, OpenAIApiError)>),
     Compiled(Result<Output, AssistantError>),
     DoNothing,
@@ -160,9 +150,8 @@ impl Default for EditArea {
     }
 }
 
-
 #[derive(Debug, Copy, Clone)]
-enum AreaIndex{
+enum AreaIndex {
     Prompt = 0,
     Input = 1,
     Result = 2,
@@ -181,7 +170,6 @@ struct Model {
     current: (String, String),
     workflow: Workflow,
 }
-
 
 #[derive(Error, Clone, Debug)]
 pub enum AssistantError {
@@ -224,9 +212,7 @@ impl From<regex::Error> for AssistantError {
     }
 }
 
-
-
-async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, AssistantError> {
+async fn save_and_compile(output_path: PathBuf, code: String) -> Result<Output, AssistantError> {
     tokio::fs::write(&output_path, code).await?;
     let res = compile(output_path).await?;
 
@@ -242,25 +228,33 @@ struct LoadedInput {
 async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
     debug!("load_input(): prompt:{:?}, tag:{}", &prompt, &tag);
 
-    prompt.inputs.iter().find(|i| i.tag == tag)
-        .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
+    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
+        (LoadedInput {
+            prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
-            input: i.text.clone()}))
+            input: i.text.clone(),
+        })
+    })
 }
 
 async fn pass_result(prompt: Prompt, tag: String, curr_result: String) -> Option<LoadedInput> {
-    debug!("pass_result(): prompt:{:?}, tag:{}, curr_result:{}", &prompt, &tag, &curr_result);
-    prompt.inputs.iter().find(|i| i.tag == tag)
-        .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
+    debug!(
+        "pass_result(): prompt:{:?}, tag:{}, curr_result:{}",
+        &prompt, &tag, &curr_result
+    );
+    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
+        (LoadedInput {
+            prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
-            input: curr_result}))
+            input: curr_result,
+        })
+    })
 }
-
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
     for c in contents {
-        if let Mark::Content {..} = c {
+        if let Mark::Content { .. } = c {
             res = Some(c);
             break;
         }
@@ -272,9 +266,14 @@ impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = (Cli, OpenAi, HashMap<String, openai_api::scenario::Prompt>, Workflow);
+    type Flags = (
+        Cli,
+        OpenAi,
+        HashMap<String, openai_api::scenario::Prompt>,
+        Workflow,
+    );
 
-    fn  new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
+    fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let prompt = EditArea::default();
@@ -291,20 +290,32 @@ impl Application for Model {
         let client = create_opeai_client(&flags.1);
 
         let commands = vec![
-            Command::perform(connect(flags.1.clone(), client, flags.0.prompt_keys.clone(), flags.2.clone()),
-                Message::Connected),
-            Command::perform(load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
-                Message::InputLoaded)];
+            Command::perform(
+                connect(
+                    flags.1.clone(),
+                    client,
+                    flags.0.prompt_keys.clone(),
+                    flags.2.clone(),
+                ),
+                Message::Connected,
+            ),
+            Command::perform(
+                load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
+                Message::InputLoaded,
+            ),
+        ];
 
-        (Model {
-            env: flags.0.clone(),
-            prompts: flags.2.clone(),
-            context: None,
-            edit_areas: vec![prompt, input, result],
-            current:(name.clone(), tag.clone()),
-            workflow: flags.3,
-        },
-         Command::batch(commands))
+        (
+            Model {
+                env: flags.0.clone(),
+                prompts: flags.2.clone(),
+                context: None,
+                edit_areas: vec![prompt, input, result],
+                current: (name.clone(), tag.clone()),
+                workflow: flags.3,
+            },
+            Command::batch(commands),
+        )
     }
 
     fn title(&self) -> String {
@@ -318,57 +329,62 @@ impl Application for Model {
                 info!("Connected");
                 self.context = Some(Arc::new(Mutex::new(ctx)));
                 Command::none()
-            },
-            Message::OpenFile(_idx) => {
-                Command::none()
-            },
-            Message::Connected(Err(_)) => {
-                Command::none()
-            },
-            Message::LoadInput{name, tag} => {
+            }
+            Message::OpenFile(_idx) => Command::none(),
+            Message::Connected(Err(_)) => Command::none(),
+            Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
                 self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 Command::perform(load_input(prompt, tag), Message::InputLoaded)
-            },
-            Message::PassResult{name, tag} => {
+            }
+            Message::PassResult { name, tag } => {
                 let curr_result = &self.edit_areas[AreaIndex::Result as usize].content.text();
-                Command::perform(pass_result(self.prompts.get(&name).unwrap().clone(), tag, curr_result.clone()), Message::InputLoaded)
-            },
-            Message::InputLoaded(Some(LoadedInput{prompt, prefix, input:text})) => {
+                Command::perform(
+                    pass_result(
+                        self.prompts.get(&name).unwrap().clone(),
+                        tag,
+                        curr_result.clone(),
+                    ),
+                    Message::InputLoaded,
+                )
+            }
+            Message::InputLoaded(Some(LoadedInput {
+                prompt,
+                prefix,
+                input: text,
+            })) => {
                 let default = EditArea::default();
                 let prefixed_text = prefix.unwrap_or_default() + "\n" + &text;
-                self.edit_areas[AreaIndex::Input as usize] = EditArea{
+                self.edit_areas[AreaIndex::Input as usize] = EditArea {
                     content: text_editor::Content::with_text(&prefixed_text),
                     ..default
                 };
                 let default = EditArea::default();
-                self.edit_areas[AreaIndex::Prompt as usize] = EditArea{
+                self.edit_areas[AreaIndex::Prompt as usize] = EditArea {
                     content: text_editor::Content::with_text(&prompt),
                     ..default
                 };
                 Command::none()
-            },
-            | Message::InputLoaded(None) => {
-                Command::none()
-            },
+            }
+            Message::InputLoaded(None) => Command::none(),
             Message::FileOpened(result) => {
                 if let Ok((idx, (path, contents))) = result {
                     let content = text_editor::Content::with_text(&contents);
                     let default = EditArea::default();
-                    self.edit_areas[idx as usize] = EditArea{
+                    self.edit_areas[idx as usize] = EditArea {
                         path: Some(path),
                         content,
                         ..default
                     };
                 }
                 Command::none()
-            },
+            }
             Message::ActionPerformed(idx, action) => {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
-            },
-            Message::QueryAi {name,..} => {
+            }
+            Message::QueryAi { name, .. } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
@@ -378,26 +394,35 @@ impl Application for Model {
                         ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })
                     });
 
-                    Command::perform(openai_api::ask(pass_context, pass_name,
-                                                     self.edit_areas[AreaIndex::Input as usize].content.text()),
-                                     Message::Answered)
-
+                    Command::perform(
+                        openai_api::ask(
+                            pass_context,
+                            pass_name,
+                            self.edit_areas[AreaIndex::Input as usize].content.text(),
+                        ),
+                        Message::Answered,
+                    )
                 } else {
                     Command::none()
                 }
-            },
+            }
             Message::Answered(res) => {
                 info!("{:?}", res);
                 let mut command = Command::none();
                 match res {
-                    Ok((name, text)) =>{
+                    Ok((name, text)) => {
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
                         let context = self.context.clone().unwrap();
                         let cloned_text = text.clone();
                         let _handle = tokio::spawn(async move {
                             let mut ctx = context.lock().await;
-                            ctx.add_conversation(name, Conversation::FromAi { message: cloned_text })
+                            ctx.add_conversation(
+                                name,
+                                Conversation::FromAi {
+                                    message: cloned_text,
+                                },
+                            )
                         });
 
                         if let Ok(markers) = opt_markers {
@@ -406,7 +431,11 @@ impl Application for Model {
                             let fsharp = String::from("fsharp");
                             //let text = String::from("text");
 
-                            if let Some(Mark::Content{text, lang: Some(matcher)}) = get_content(contents) {
+                            if let Some(Mark::Content {
+                                text,
+                                lang: Some(matcher),
+                            }) = get_content(contents)
+                            {
                                 if matcher == json {
                                     let response = serde_json::from_str::<Response>(&text);
                                     if let Ok(_resp) = response {
@@ -416,7 +445,10 @@ impl Application for Model {
                                     content = text_editor::Content::with_text(&text);
                                     let mut path = PathBuf::from(&self.env.output_dir);
                                     path.push("sample.fs");
-                                    command = Command::perform(save_and_compile(path, text), Message::Compiled);
+                                    command = Command::perform(
+                                        save_and_compile(path, text),
+                                        Message::Compiled,
+                                    );
                                 } else {
                                     //
                                 }
@@ -430,61 +462,60 @@ impl Application for Model {
                         }
 
                         let default = EditArea::default();
-                        self.edit_areas[AreaIndex::Result as usize] = EditArea{
-                            content,
-                            ..default
-                        };
+                        self.edit_areas[AreaIndex::Result as usize] =
+                            EditArea { content, ..default };
                     }
                     _ => error!("FAILED"),
                 }
                 command
-            },
+            }
             Message::Compiled(msg) => {
                 debug!("{:?}", msg);
                 Command::none()
-            },
-            Message::DoNothing => {
-                Command::none()
-            },
+            }
+            Message::DoNothing => Command::none(),
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let  vec = &self.edit_areas;
+        let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
         column![
             row![
-                row(
-                    list_inputs(&self.prompts).into_iter()
-                    .map(|(name, tag)|
-                        button(name.clone(), tag.clone())
-                        .on_press(Message::LoadInput{name, tag})
+                row(list_inputs(&self.prompts)
+                    .into_iter()
+                    .map(|(name, tag)| button(name.clone(), tag.clone())
+                        .on_press(Message::LoadInput { name, tag })
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
-                    button("Next".to_string(), "".to_string())
-                      .on_press(load_message(&self.workflow, &self.current.0, &self.current.1)),
-
-                    button("Ask AI".to_string(), "".to_string())
-                        .on_press(Message::QueryAi{name: self.current.0.clone(), tag: self.current.1.clone()})
-                    ].align_items(Alignment::End)
+                    button("Next".to_string(), "".to_string()).on_press(load_message(
+                        &self.workflow,
+                        &self.current.0,
+                        &self.current.1
+                    )),
+                    button("Ask AI".to_string(), "".to_string()).on_press(Message::QueryAi {
+                        name: self.current.0.clone(),
+                        tag: self.current.1.clone()
+                    })
+                ]
+                .align_items(Alignment::End)
                 .width(iced::Length::Fill),
-
-                ],
+            ],
             row![
                 column![
-/*                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
-                    .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
- */
+                    /*                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
+                                       .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
+                    */
                     text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
-                    .on_action(|action|Message::ActionPerformed(AreaIndex::Input, action)),
+                        .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
                 ],
                 column![
-                    text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content)
-                    //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
+                    text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content) //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
                 ],
             ],
-        ].into()
+        ]
+        .into()
     }
 }
 
@@ -493,13 +524,15 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     for k in prompts.keys() {
         for i in prompts.get(k).unwrap().inputs.iter() {
             items.push((k.clone(), i.tag.clone()));
-
         }
     }
     items
 }
 
-async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
+async fn load_file<T: Copy>(
+    idx: T,
+    path: PathBuf,
+) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
     let contents = tokio::fs::read_to_string(&path)
         .await
         .map(Arc::new)
@@ -513,10 +546,13 @@ fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
     let directive = wf.get_directive(name, tag);
     match directive {
         Directive::KeepAsIs => Message::DoNothing,
-        Directive::JumpTo { name, tag } =>
-            Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
-        Directive::PassResultTo { name, tag } => {
-            Message::PassResult { name: name.to_string(), tag: tag.to_string() }
+        Directive::JumpTo { name, tag } => Message::LoadInput {
+            name: name.to_string(),
+            tag: tag.to_string(),
+        },
+        Directive::PassResultTo { name, tag } => Message::PassResult {
+            name: name.to_string(),
+            tag: tag.to_string(),
         },
     }
 }
@@ -526,8 +562,6 @@ struct Response {
     missing: Vec<String>,
     possible: Vec<String>,
 }
-
-
 
 #[derive(Debug, Clone)]
 enum Error {
@@ -548,15 +582,14 @@ fn button<'a>(text: String, tag: String) -> widget::Button<'a, Message> {
     Button::new(Text::new(title))
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
-enum Mark{
-    Marker{text: String, lang: Option<String>,},
-    Content{text: String, lang: Option<String>, },
+enum Mark {
+    Marker { text: String, lang: Option<String> },
+    Content { text: String, lang: Option<String> },
 }
 
-fn split_code(source:&str, markers:&Vec<regex::Regex>) -> Vec<Mark> {
-    let mut curr_pos:usize = 0; // index to source
+fn split_code(source: &str, markers: &Vec<regex::Regex>) -> Vec<Mark> {
+    let mut curr_pos: usize = 0; // index to source
     let max = source.len();
     let mut result = Vec::new();
     let mut lang = None;
@@ -568,65 +601,106 @@ fn split_code(source:&str, markers:&Vec<regex::Regex>) -> Vec<Mark> {
             let pos = all_matched.range().start; // position in [curr..pos.. <max]
             if 0 != pos {
                 // As there is some text before marker, it becomes Content
-                result.push(Mark::Content {text: String::from(&source[curr_pos..(curr_pos + pos)]), lang: lang.clone()});
+                result.push(Mark::Content {
+                    text: String::from(&source[curr_pos..(curr_pos + pos)]),
+                    lang: lang.clone(),
+                });
                 curr_pos += pos;
             }
-            lang = matched.get(1).map(|m| String::from(&source[curr_pos + m.range().start - pos..(curr_pos + m.range().end - pos)]));
+            lang = matched.get(1).map(|m| {
+                String::from(
+                    &source[curr_pos + m.range().start - pos..(curr_pos + m.range().end - pos)],
+                )
+            });
             let r = all_matched.range();
             let len = r.end - r.start;
 
-            result.push(Mark::Marker{text: String::from(&source[curr_pos..curr_pos + len]), lang: lang.clone()});
+            result.push(Mark::Marker {
+                text: String::from(&source[curr_pos..curr_pos + len]),
+                lang: lang.clone(),
+            });
             curr_pos += len;
         } else {
             // not marker found. This might be a error.
         }
-
     }
     if curr_pos < max {
-        result.push(Mark::Content{text: String::from(&source[curr_pos..max]), lang: lang.clone()});
+        result.push(Mark::Content {
+            text: String::from(&source[curr_pos..max]),
+            lang: lang.clone(),
+        });
     }
 
     result
 }
 
-
 #[cfg(test)]
 mod test {
-    use crate::config::read_config;
     use super::*;
+    use crate::config::read_config;
     #[test]
     fn test_split_mark_only() {
         let input = r#"```start
-```"#.to_string();
+```"#
+            .to_string();
         let markers = vec!["```(start)".to_string(), "```".to_string()];
         let mut cli = Cli::default();
-        cli = Cli{
-            command: Commands::AskAi {markers: Some(markers)},
+        cli = Cli {
+            command: Commands::AskAi {
+                markers: Some(markers),
+            },
             ..cli
         };
-        let rex_markers= cli.get_markers();
+        let rex_markers = cli.get_markers();
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 3);
-        assert_eq!(res.first(), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
-        assert_eq!(res.get(1), Some(&Mark::Content{text:"\n".to_string(), lang: Some("start".to_string())}));
-        assert_eq!(res.get(2), Some(&Mark::Marker{text:"```".to_string(), lang: None}));
+        assert_eq!(
+            res.first(),
+            Some(&Mark::Marker {
+                text: "```start".to_string(),
+                lang: Some("start".to_string())
+            })
+        );
+        assert_eq!(
+            res.get(1),
+            Some(&Mark::Content {
+                text: "\n".to_string(),
+                lang: Some("start".to_string())
+            })
+        );
+        assert_eq!(
+            res.get(2),
+            Some(&Mark::Marker {
+                text: "```".to_string(),
+                lang: None
+            })
+        );
     }
     #[test]
     fn test_split_mark_backquotes() {
         let input = r#"```start
 asdf
-```"#.to_string();
+```"#
+            .to_string();
         let markers = vec!["```start```".to_string()];
         let mut cli = Cli::default();
-        cli = Cli{
-            command: Commands::AskAi {markers: Some(markers)},
+        cli = Cli {
+            command: Commands::AskAi {
+                markers: Some(markers),
+            },
             ..cli
         };
-        let rex_markers= cli.get_markers();
+        let rex_markers = cli.get_markers();
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 1);
-        assert_eq!(res.first(), Some(&Mark::Content{text:"```start\nasdf\n```".to_string(), lang: None}));
+        assert_eq!(
+            res.first(),
+            Some(&Mark::Content {
+                text: "```start\nasdf\n```".to_string(),
+                lang: None
+            })
+        );
     }
 
     #[test]
@@ -636,23 +710,37 @@ asdf
 hjklm
 ```
 xyzw
-"#.to_string();
+"#
+        .to_string();
         let markers = vec!["```(start)".to_string(), "```".to_string()];
         let mut cli = Cli::default();
-        cli = Cli{
-            command: Commands::AskAi {markers: Some(markers)},
+        cli = Cli {
+            command: Commands::AskAi {
+                markers: Some(markers),
+            },
             ..cli
         };
-        let rex_markers= cli.get_markers();
+        let rex_markers = cli.get_markers();
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 5);
-        assert_eq!(res.first(), Some(&Mark::Content{text:"asdf\n".to_string(), lang: None}));
-        assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
+        assert_eq!(
+            res.first(),
+            Some(&Mark::Content {
+                text: "asdf\n".to_string(),
+                lang: None
+            })
+        );
+        assert_eq!(
+            res.get(1),
+            Some(&Mark::Marker {
+                text: "```start".to_string(),
+                lang: Some("start".to_string())
+            })
+        );
         //assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n".to_string(), lang: Some("start".to_string())}));
         //assert_eq!(res.get(3), Some(&Mark::Marker{text:"```".to_string(), lang: None}));
         //assert_eq!(res.get(4), Some(&Mark::Content{text:"\nxyzw\n".to_string(), lang: None}));
-
     }
     #[test]
     fn test_regex() {
@@ -680,7 +768,8 @@ xyzw
           - tag: abc
             text: |
              xyz
-        "#.to_string();
+        "#
+        .to_string();
         let prompt: Prompt = read_config(None, &prompt_content).unwrap();
         assert_eq!(prompt.instruction, "asdf\nasdf\n".to_string());
     }
@@ -702,12 +791,28 @@ xyzw
                !PassResultTo
                name: name2
                tag: tag2
-        "#.to_string();
+        "#
+        .to_string();
         let workflow: Result<Workflow, _> = read_config(None, &workflow_content);
         //let workflow: Result<Workflow, _> = serde_yaml::from_str(&workflow_content);
         let workflow = workflow.unwrap();
-        assert_eq!(workflow.get_directive("name1", "tag1"), Directive::KeepAsIs{});
-        assert_eq!(workflow.get_directive("name1", "tag2"), Directive::JumpTo{name: "name1".to_string(), tag: "tag1".to_string()});
-        assert_eq!(workflow.get_directive("name2", "tag3"), Directive::PassResultTo{name: "name2".to_string(), tag: "tag2".to_string()});
+        assert_eq!(
+            workflow.get_directive("name1", "tag1"),
+            Directive::KeepAsIs {}
+        );
+        assert_eq!(
+            workflow.get_directive("name1", "tag2"),
+            Directive::JumpTo {
+                name: "name1".to_string(),
+                tag: "tag1".to_string()
+            }
+        );
+        assert_eq!(
+            workflow.get_directive("name2", "tag3"),
+            Directive::PassResultTo {
+                name: "name2".to_string(),
+                tag: "tag2".to_string()
+            }
+        );
     }
 }

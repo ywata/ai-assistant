@@ -1,27 +1,34 @@
-use std::collections::HashMap;
-use std::future::Future;
-use std::sync::{Arc};
 use async_openai::{
-    types::{CreateMessageRequestArgs, CreateRunRequestArgs, CreateThreadRequestArgs,
-            RunStatus, MessageContent, CreateAssistantRequestArgs,
-            AssistantObject, ThreadObject, },
     config::OpenAIConfig,
     error::OpenAIError,
+    types::{
+        AssistantObject, CreateAssistantRequestArgs, CreateMessageRequestArgs,
+        CreateRunRequestArgs, CreateThreadRequestArgs, MessageContent, RunStatus, ThreadObject,
+    },
     Client,
 };
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
 
-use serde::{Serialize, Deserialize};
-use tokio::sync::Mutex;
-use crate::OpenAIApiError::OpenAIAccessError;
 use crate::scenario::Prompt;
-
+use crate::OpenAIApiError::OpenAIAccessError;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 pub mod scenario;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum OpenAi {
-    OpenAiToken { token: String, model: String},
-    AzureAiToken { key: String, endpoint:String, model: String},
+    OpenAiToken {
+        token: String,
+        model: String,
+    },
+    AzureAiToken {
+        key: String,
+        endpoint: String,
+        model: String,
+    },
 }
 
 impl OpenAi {
@@ -35,13 +42,16 @@ impl OpenAi {
 
 #[derive(Clone, Debug)]
 pub enum Conversation {
-    ToAi {message: String},
-    FromAi {message: String},
+    ToAi { message: String },
+    FromAi { message: String },
 }
 
 impl Default for OpenAi {
     fn default() -> Self {
-        OpenAi::OpenAiToken {token: "".to_string(), model: "".to_string()}
+        OpenAi::OpenAiToken {
+            token: "".to_string(),
+            model: "".to_string(),
+        }
     }
 }
 
@@ -74,7 +84,11 @@ impl Context {
     }
 
     pub fn add_conversation(&mut self, name: String, conversation: Conversation) {
-        self.interactions.get_mut(&name).unwrap().conversation.push(conversation);
+        self.interactions
+            .get_mut(&name)
+            .unwrap()
+            .conversation
+            .push(conversation);
     }
 }
 
@@ -83,20 +97,19 @@ pub fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
     match config {
         OpenAi::OpenAiToken { token, .. } => {
             let token = token.as_str();
-            let oai_config: OpenAIConfig = OpenAIConfig::default()
-                .with_api_key(token);
+            let oai_config: OpenAIConfig = OpenAIConfig::default().with_api_key(token);
 
             //create a client
 
             Client::with_config(oai_config)
-        },
-        _ => Client::<OpenAIConfig>::new()
+        }
+        _ => Client::<OpenAIConfig>::new(),
     }
 }
 #[cfg(azure_ai)]
 pub fn create_opeai_client(config: &OpenAi) -> Client<AzureConfig> {
     match config {
-        OpenAi::AzureAiToken { key, endpoint,.. } => {
+        OpenAi::AzureAiToken { key, endpoint, .. } => {
             let key = key.as_str();
             let endpoint = endpoint.as_str();
             let oai_config: AzureConfig = AzureConfig::default()
@@ -105,20 +118,23 @@ pub fn create_opeai_client(config: &OpenAi) -> Client<AzureConfig> {
 
             //create a client
             Client::with_config(oai_config)
-        },
-        _ => Client::<AzureConfig>::new()
+        }
+        _ => Client::<AzureConfig>::new(),
     }
 }
 
-
-pub async fn connect(config: OpenAi, client: Client<OpenAIConfig>, names: Vec<String>, prompts: HashMap<String, Prompt> )
-                 -> Result<Context, OpenAIApiError> {
+pub async fn connect(
+    config: OpenAi,
+    client: Client<OpenAIConfig>,
+    names: Vec<String>,
+    prompts: HashMap<String, Prompt>,
+) -> Result<Context, OpenAIApiError> {
     let mut context: Context = Context::new(client);
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
-            let (thread, assistant)
-                = setup_assistant(&config, &context.client, &key, &prompt.instruction).await?;
+            let (thread, assistant) =
+                setup_assistant(&config, &context.client, &key, &prompt.instruction).await?;
             let interaction = Interaction {
                 name: key.clone(),
                 thread,
@@ -136,10 +152,12 @@ pub async fn connect(config: OpenAi, client: Client<OpenAIConfig>, names: Vec<St
     }
 }
 
-
-
-async fn setup_assistant(config: &OpenAi, client: &Client<OpenAIConfig>, name: &String,  prompt: &String, )
-    -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
+async fn setup_assistant(
+    config: &OpenAi,
+    client: &Client<OpenAIConfig>,
+    name: &String,
+    prompt: &String,
+) -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;
     let thread = client.threads().create(thread_request.clone()).await?;
@@ -161,19 +179,23 @@ async fn setup_assistant(config: &OpenAi, client: &Client<OpenAIConfig>, name: &
 }
 
 pub trait Saver {
-    fn save(&self, out_dir:&String, text:String) -> impl Future<Output = Result<(), OpenAIApiError>> + Send;
+    fn save(
+        &self,
+        out_dir: &String,
+        text: String,
+    ) -> impl Future<Output = Result<(), OpenAIApiError>> + Send;
 }
 
-
-
-pub async fn main_action<S>(client:&Client<OpenAIConfig>,
-                            thread:&ThreadObject, assistant:&AssistantObject,
-                            input:&str,
-                            out_dir: &String,
-                            saver : S)
-                            -> Result<(), OpenAIApiError>
-    where
-        S: Saver
+pub async fn main_action<S>(
+    client: &Client<OpenAIConfig>,
+    thread: &ThreadObject,
+    assistant: &AssistantObject,
+    input: &str,
+    out_dir: &String,
+    saver: S,
+) -> Result<(), OpenAIApiError>
+where
+    S: Saver,
 {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
@@ -206,11 +228,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     let mut awaiting_response = true;
     while awaiting_response {
         //retrieve the run
-        let run = client
-            .threads()
-            .runs(&thread.id)
-            .retrieve(&run.id)
-            .await?;
+        let run = client.threads().runs(&thread.id).retrieve(&run.id).await?;
         //check the status of the run
         match run.status {
             RunStatus::Completed => {
@@ -221,15 +239,9 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                 // in the thread
 
                 //retrieve the response from the run
-                let response = client
-                    .threads()
-                    .messages(&thread.id)
-                    .list(&query)
-                    .await?;
+                let response = client.threads().messages(&thread.id).list(&query).await?;
                 //get the message id from the response
-                let message_id = response
-                    .data.first().unwrap()
-                    .id.clone();
+                let message_id = response.data.first().unwrap().id.clone();
                 //get the message from the response
                 let message = client
                     .threads()
@@ -237,20 +249,19 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
                     .retrieve(&message_id)
                     .await?;
                 //get the content from the message
-                let content = message
-                    .content.first().unwrap();
+                let content = message.content.first().unwrap();
 
                 //get the text from the content
                 let text = match content {
                     MessageContent::Text(text) => text.text.value.clone(),
-                    MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
+                    MessageContent::ImageFile(_) => {
+                        panic!("imaged are not supported in the terminal")
+                    }
                 };
                 //print the text
                 println!("--- Response: {}", &text);
 
                 saver.save(out_dir, text).await?;
-
-
             }
             RunStatus::Failed => {
                 awaiting_response = false;
@@ -260,16 +271,18 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
         }
     }
 
-
     //once we have broken from the main loop we can delete the assistant and thread
-//    client.assistants().delete(assistant_id).await?;
-//    client.threads().delete(&thread.id).await?;
-
+    //    client.assistants().delete(assistant_id).await?;
+    //    client.threads().delete(&thread.id).await?;
 
     Ok(())
 }
 
-pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> Result<(String, String), (String, OpenAIApiError)> {
+pub async fn ask(
+    context: Arc<Mutex<Context>>,
+    name: String,
+    input: String,
+) -> Result<(String, String), (String, OpenAIApiError)> {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
     // TODO: handle locked state
@@ -280,29 +293,32 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
         let assistant_id = interaction.assistant.id.clone();
         let thread_id = interaction.thread.id.clone();
 
-
-    //create a message for the thread
+        //create a message for the thread
         let message = CreateMessageRequestArgs::default()
             .role("user")
             .content(input.clone())
-            .build().map_err(|e| (name.clone(), e.into()))?;
+            .build()
+            .map_err(|e| (name.clone(), e.into()))?;
         println!("Create message request args: {:#?}", message);
         //attach message to the thread
         let _message_obj = client
             .threads()
             .messages(&thread_id)
             .create(message)
-            .await.map_err(|_| (name.clone(), OpenAIApiError::OpenAIAccessError))?;
+            .await
+            .map_err(|_| (name.clone(), OpenAIApiError::OpenAIAccessError))?;
         println!("messagne created");
         //create a run for the thread
         let run_request = CreateRunRequestArgs::default()
             .assistant_id(assistant_id)
-            .build().map_err(|e| (name.clone(), e.into()))?;
+            .build()
+            .map_err(|e| (name.clone(), e.into()))?;
         let run = client
             .threads()
             .runs(&thread_id)
             .create(run_request)
-            .await.map_err(|e| (name.clone(), e.into()))?;
+            .await
+            .map_err(|e| (name.clone(), e.into()))?;
         println!("Start waiting for response");
         //wait for the run to complete
         let mut awaiting_response = true;
@@ -312,7 +328,8 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
                 .threads()
                 .runs(&thread_id)
                 .retrieve(&run.id)
-                .await.map_err(|e| (name.clone(), e.into()))?;
+                .await
+                .map_err(|e| (name.clone(), e.into()))?;
             //check the status of the run
             match run.status {
                 RunStatus::Completed => {
@@ -327,30 +344,31 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
                         .threads()
                         .messages(&thread_id)
                         .list(&query)
-                        .await.map_err(|e| (name.clone(), e.into()))?;
+                        .await
+                        .map_err(|e| (name.clone(), e.into()))?;
                     //get the message id from the response
-                    let message_id = response
-                        .data.first().unwrap()
-                        .id.clone();
+                    let message_id = response.data.first().unwrap().id.clone();
                     //get the message from the response
                     let message = client
                         .threads()
                         .messages(&thread_id)
                         .retrieve(&message_id)
-                        .await.map_err(|e| (name.clone(), e.into()))?;
+                        .await
+                        .map_err(|e| (name.clone(), e.into()))?;
                     //get the content from the message
-                    let content = message
-                        .content.first().unwrap();
+                    let content = message.content.first().unwrap();
 
                     //get the text from the content
                     let text = match content {
                         MessageContent::Text(text) => text.text.value.clone(),
-                        MessageContent::ImageFile(_) => panic!("imaged are not supported in the terminal"),
+                        MessageContent::ImageFile(_) => {
+                            panic!("imaged are not supported in the terminal")
+                        }
                     };
                     //print the text
                     println!("--- Response: {}", &text);
                     return Ok((name, text.clone()));
-                },
+                }
 
                 RunStatus::Failed => {
                     awaiting_response = false;
@@ -367,36 +385,33 @@ pub async fn ask(context: Arc<Mutex<Context>>, name: String,  input: String) -> 
     Ok((name, String::from("???")))
 }
 
-
 pub fn report_status(status: RunStatus) {
     match status {
         RunStatus::Queued => {
             println!("--- Run Queued");
-        },
+        }
         RunStatus::Cancelling => {
             println!("--- Run Cancelling");
-        },
+        }
         RunStatus::Cancelled => {
             println!("--- Run Cancelled");
-        },
+        }
         RunStatus::Expired => {
             println!("--- Run Expired");
-        },
+        }
         RunStatus::RequiresAction => {
             println!("--- Run Requires Action");
-        },
+        }
         RunStatus::InProgress => {
             println!("--- Waiting for response...");
-        },
+        }
         _ => panic!("should not reach here"),
     }
-
 }
 
 #[derive(Debug, Clone)]
 pub enum OpenAIApiError {
-    OpenAIAccessError
-
+    OpenAIAccessError,
 }
 
 impl From<OpenAIError> for OpenAIApiError {
@@ -412,4 +427,3 @@ impl From<std::io::Error> for OpenAIApiError {
         OpenAIApiError::OpenAIAccessError
     }
 }
-

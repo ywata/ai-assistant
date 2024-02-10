@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use log::error;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Input {
@@ -56,9 +57,49 @@ impl Workflow {
     }
 }
 
+fn list_workflow_inputs(workflow: &Workflow) -> Vec<(String, String)> {
+    let mut vec = Vec::new();
+    for (name, directives) in workflow.workflow.iter() {
+        for (_person, directive) in directives.iter() {
+            match directive {
+                Directive::PassResultTo { name, tag } => {
+                    vec.push((name.clone(), tag.clone()));
+                },
+                Directive::JumpTo { name, tag } => {
+                    vec.push((name.clone(), tag.clone()));
+                },
+                _ => {}
+            }
+        }
+    }
+    vec
+}
+fn list_input_specifiers(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
+    let mut vec = Vec::new();
+    for (name, prompt) in prompts.iter() {
+        for input in prompt.inputs.iter() {
+            vec.push((name.clone(), input.tag.clone()));
+        }
+    }
+    vec
+}
+
+// TODO: Implement the parse_scenario function. It does nothing at the moment.
 pub fn parse_scenario(
     prompts: HashMap<String, Prompt>,
     workflow: Workflow,
 ) -> Option<(HashMap<String, Prompt>, Workflow)> {
+    // As both prompts and workflow type checked successfully, what should do
+    // here is to check
+    // 1. if the workflow has a directive that points to a prompt in promts.
+
+    let workflow_inputs = list_workflow_inputs(&workflow);
+    let input_specifiers = list_input_specifiers(&prompts);
+    for (name, tag) in workflow_inputs.iter() {
+        if !input_specifiers.contains(&(name.clone(), tag.clone())) {
+            error!("({},{}) is not in {:?}", name, tag, input_specifiers);
+            return None;
+        }
+    }
     Some((prompts, workflow))
 }

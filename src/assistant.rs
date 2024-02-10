@@ -16,6 +16,8 @@ use thiserror::Error;
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use tokio::sync::Mutex;
+use log::{error, warn, info, debug, trace};
+use env_logger::init;
 
 use openai_api::{connect, Context, Conversation, create_opeai_client, OpenAi, OpenAIApiError};
 
@@ -94,8 +96,9 @@ impl Default for Cli {
 
 
 pub fn main() -> Result<(), AssistantError> {
+    env_logger::init();
     let args = Cli::parse();
-    println!("{:?}", args);
+    debug!("args:{:?}", args);
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
@@ -107,6 +110,7 @@ pub fn main() -> Result<(), AssistantError> {
     } else {
         Workflow::default()
     };
+    debug!("workflow:{:?}", &workflow);
 
     let settings = Settings::default();
     let updated_settings = Settings {
@@ -236,7 +240,7 @@ struct LoadedInput {
     input: String,
 }
 async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
-    println!("tag:{:?}", &tag);
+    debug!("load_input(): prompt:{:?}, tag:{}", &prompt, &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag)
         .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
@@ -245,6 +249,7 @@ async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
 }
 
 async fn pass_result(prompt: Prompt, tag: String, curr_result: String) -> Option<LoadedInput> {
+    debug!("pass_result(): prompt:{:?}, tag:{}, curr_result:{}", &prompt, &tag, &curr_result);
     prompt.inputs.iter().find(|i| i.tag == tag)
         .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
             prefix: i.prefix.clone(),
@@ -307,9 +312,10 @@ impl Application for Model {
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
+        debug!("{:?}", message);
         match message {
             Message::Connected(Ok(ctx)) => {
-                println!("Connected");
+                info!("Connected");
                 self.context = Some(Arc::new(Mutex::new(ctx)));
                 Command::none()
             },
@@ -344,7 +350,6 @@ impl Application for Model {
                 Command::none()
             },
             | Message::InputLoaded(None) => {
-                println!("InputLoade:None");
                 Command::none()
             },
             Message::FileOpened(result) => {
@@ -382,11 +387,10 @@ impl Application for Model {
                 }
             },
             Message::Answered(res) => {
-                println!("{:?}", res);
+                info!("{:?}", res);
                 let mut command = Command::none();
                 match res {
                     Ok((name, text)) =>{
-                        println!("Ok");
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
                         let context = self.context.clone().unwrap();
@@ -397,7 +401,6 @@ impl Application for Model {
                         });
 
                         if let Ok(markers) = opt_markers {
-                            println!("Ok:markers:{:?}", markers);
                             let contents = split_code(&text, &markers.clone()).clone();
                             let json = String::from("json");
                             let fsharp = String::from("fsharp");
@@ -418,11 +421,11 @@ impl Application for Model {
                                     //
                                 }
                             } else {
-                                println!("No splitted contents: {}", &text);
+                                trace!("No splitted contents: {}", &text);
                                 content = text_editor::Content::with_text(&text);
                             }
                         } else {
-                            println!("No: markers");
+                            trace!("No: markers");
                             content = text_editor::Content::with_text(&text);
                         }
 
@@ -432,12 +435,12 @@ impl Application for Model {
                             ..default
                         };
                     }
-                    _ => println!("FAILED"),
+                    _ => error!("FAILED"),
                 }
                 command
             },
             Message::Compiled(msg) => {
-                println!("{:?}", msg);
+                debug!("{:?}", msg);
                 Command::none()
             },
             Message::DoNothing => {
@@ -448,6 +451,7 @@ impl Application for Model {
 
     fn view(&self) -> Element<Message> {
         let  vec = &self.edit_areas;
+        debug!("view(): {:?}", vec);
         column![
             row![
                 row(
@@ -460,6 +464,7 @@ impl Application for Model {
                     horizontal_space(iced::Length::Fill),
                     button("Next".to_string(), "".to_string())
                       .on_press(load_message(&self.workflow, &self.current.0, &self.current.1)),
+
                     button("Ask AI".to_string(), "".to_string())
                         .on_press(Message::QueryAi{name: self.current.0.clone(), tag: self.current.1.clone()})
                     ].align_items(Alignment::End)
@@ -504,6 +509,7 @@ async fn load_file<T: Copy>(idx: T, path: PathBuf) -> Result<(T, (PathBuf, Arc<S
 }
 
 fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
+    debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);
     let directive = wf.get_directive(name, tag);
     match directive {
         Directive::KeepAsIs => Message::DoNothing,

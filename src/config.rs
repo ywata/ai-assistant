@@ -5,6 +5,7 @@ use crate::config::ConfigError::{ConversionFailed, EnvNotFound, UnexpectedKey};
 use serde::{Deserialize};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use log::debug;
 
 #[derive(Error, Deserialize, Debug, PartialEq)]
 pub enum ConfigError {
@@ -34,12 +35,14 @@ pub fn convert<T:for<'a>Deserialize<'a>+Clone + std::fmt::Debug>(key:Option<&Str
     -> Result<T, ConfigError> {
     match key {
         None => {
-            serde_yaml::from_str(yaml_string).map_err(|_| ConversionFailed)
+            let config = serde_yaml::from_str(yaml_string);
+            debug!("{:?}", &config);
+            config.map_err(|_| ConversionFailed)
         },
         Some(key) => {
             let config: Result<BTreeMap<String, T>, _>
                 = serde_yaml::from_str(yaml_string);
-            println!("{:?}", &config);
+            debug!("{:?}", &config);
             let map = config.map_err(|_| UnexpectedKey)?;
             map.get(key).cloned().ok_or(ConversionFailed)
         },

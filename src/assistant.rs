@@ -43,7 +43,8 @@ struct Cli {
     output_dir: String,
     #[arg(long)]
     tag: String,
-
+    #[arg(long)]
+    auto: Option<usize>,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -85,6 +86,7 @@ impl Default for Cli {
             workflow_file: None,
             output_dir: "output".to_string(),
             tag: "default".to_string(),
+            auto: None,
             command: Commands::default(),
         }
     }

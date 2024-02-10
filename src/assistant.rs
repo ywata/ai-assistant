@@ -71,7 +71,7 @@ impl Cli {
                 let v: Result<Vec<_>, _> = m.iter().map(|s| Regex::new(s)).collect();
                 v
             },
-            _ => Ok(vec![Regex::new("").unwrap()]),
+            _ => Ok(vec![]),
         };
         res
     }
@@ -169,6 +169,10 @@ struct Model {
     env: Cli,
     prompts: HashMap<String, openai_api::scenario::Prompt>,
     context: Option<Arc<Mutex<Context>>>,
+    // edit_area contaiins current view of conversation,
+    // Prompt is set up on Thread creation time and it is not changed.
+    // Input edit_area will be used for querying to AI.
+    // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
     workflow: Workflow,
@@ -239,6 +243,14 @@ async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
             prefix: i.prefix.clone(),
             input: i.text.clone()}))
 }
+
+async fn pass_result(prompt: Prompt, tag: String, curr_result: String) -> Option<LoadedInput> {
+    prompt.inputs.iter().find(|i| i.tag == tag)
+        .map(|i| (LoadedInput{prompt:prompt.instruction.clone(),
+            prefix: i.prefix.clone(),
+            input: curr_result}))
+}
+
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
@@ -314,7 +326,8 @@ impl Application for Model {
                 Command::perform(load_input(prompt, tag), Message::InputLoaded)
             },
             Message::PassResult{name, tag} => {
-                Command::perform(load_input(self.prompts.get(&name).unwrap().clone(), tag), Message::InputLoaded)
+                let curr_result = &self.edit_areas[AreaIndex::Result as usize].content.text();
+                Command::perform(pass_result(self.prompts.get(&name).unwrap().clone(), tag, curr_result.clone()), Message::InputLoaded)
             },
             Message::InputLoaded(Some(LoadedInput{prompt, prefix, input:text})) => {
                 let default = EditArea::default();
@@ -405,7 +418,7 @@ impl Application for Model {
                                     //
                                 }
                             } else {
-                                println!("No: contents");
+                                println!("No splitted contents: {}", &text);
                                 content = text_editor::Content::with_text(&text);
                             }
                         } else {
@@ -496,8 +509,9 @@ fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
         Directive::KeepAsIs => Message::DoNothing,
         Directive::JumpTo { name, tag } =>
             Message::LoadInput { name: name.to_string(), tag: tag.to_string() },
-        Directive::PassResultTo { name, tag } =>
-            Message::PassResult { name: name.to_string(), tag: tag.to_string() },
+        Directive::PassResultTo { name, tag } => {
+            Message::PassResult { name: name.to_string(), tag: tag.to_string() }
+        },
     }
 }
 

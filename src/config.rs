@@ -30,23 +30,24 @@ pub trait ReadFromEnv<T:for<'a>Deserialize<'a>+Clone>{
 
 }
 
-pub fn convert<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, yaml_string: &str)
+pub fn convert<T:for<'a>Deserialize<'a>+Clone + std::fmt::Debug>(key:Option<&String>, yaml_string: &str)
     -> Result<T, ConfigError> {
     match key {
         None => {
             serde_yaml::from_str(yaml_string).map_err(|_| ConversionFailed)
         },
         Some(key) => {
-            let config: Result<BTreeMap<String, T>, ConfigError>
-                = serde_yaml::from_str(yaml_string).map_err(|_| UnexpectedKey);
-            let map = config?;
+            let config: Result<BTreeMap<String, T>, _>
+                = serde_yaml::from_str(yaml_string);
+            println!("{:?}", &config);
+            let map = config.map_err(|_| UnexpectedKey)?;
             map.get(key).cloned().ok_or(ConversionFailed)
         },
     }
 }
 
 
-pub fn read_config<T:for<'a>Deserialize<'a>+Clone>(key:Option<&String>, contents: &str) -> Result<T, ConfigError>{
+pub fn read_config<T:for<'a>Deserialize<'a>+Clone+ std::fmt::Debug>(key:Option<&String>, contents: &str) -> Result<T, ConfigError>{
     convert::<T>(key, contents)
 }
 

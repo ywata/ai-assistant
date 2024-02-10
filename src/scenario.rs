@@ -38,6 +38,7 @@ pub enum Directive {
     JumpTo { name: String, tag: String },
 }
 #[derive(Clone, Debug, Deserialize)]
+#[derive(Default)]
 pub struct Workflow{workflow:HashMap<String, HashMap<String, Directive>>}
 
 
@@ -53,8 +54,4 @@ impl Workflow {
     }
 }
 
-impl Default for Workflow {
-    fn default() -> Self {
-        Workflow { workflow: HashMap::new() }
-    }
-}
+

@@ -16,8 +16,8 @@ use thiserror::Error;
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use tokio::sync::Mutex;
-use log::{error, warn, info, debug, trace};
-use env_logger::init;
+use log::{error, info, debug, trace};
+
 
 use openai_api::{connect, Context, Conversation, create_opeai_client, OpenAi, OpenAIApiError};
 
@@ -105,7 +105,7 @@ pub fn main() -> Result<(), AssistantError> {
     let prompts = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
     let workflow = if let Some(ref file) = args.workflow_file {
-        let workflow_content = fs::read_to_string(&file)?;
+        let workflow_content = fs::read_to_string(file)?;
         config::read_config(None, &workflow_content)?
     } else {
         Workflow::default()
@@ -227,7 +227,7 @@ impl From<regex::Error> for AssistantError {
 
 
 async fn save_and_compile(output_path:PathBuf, code: String) -> Result<Output, AssistantError> {
-    let _write_res = tokio::fs::write(&output_path, code).await?;
+    tokio::fs::write(&output_path, code).await?;
     let res = compile(output_path).await?;
 
     Ok(res)
@@ -608,7 +608,7 @@ mod test {
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 3);
-        assert_eq!(res.get(0), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
+        assert_eq!(res.first(), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
         assert_eq!(res.get(1), Some(&Mark::Content{text:"\n".to_string(), lang: Some("start".to_string())}));
         assert_eq!(res.get(2), Some(&Mark::Marker{text:"```".to_string(), lang: None}));
     }
@@ -626,7 +626,7 @@ asdf
         let rex_markers= cli.get_markers();
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"```start\nasdf\n```".to_string(), lang: None}));
+        assert_eq!(res.first(), Some(&Mark::Content{text:"```start\nasdf\n```".to_string(), lang: None}));
     }
 
     #[test]
@@ -647,7 +647,7 @@ xyzw
 
         let res = split_code(&input, &rex_markers.unwrap());
         assert_eq!(res.len(), 5);
-        assert_eq!(res.get(0), Some(&Mark::Content{text:"asdf\n".to_string(), lang: None}));
+        assert_eq!(res.first(), Some(&Mark::Content{text:"asdf\n".to_string(), lang: None}));
         assert_eq!(res.get(1), Some(&Mark::Marker{text:"```start".to_string(), lang: Some("start".to_string())}));
         //assert_eq!(res.get(2), Some(&Mark::Content{text:"\nhjklm\n".to_string(), lang: Some("start".to_string())}));
         //assert_eq!(res.get(3), Some(&Mark::Marker{text:"```".to_string(), lang: None}));

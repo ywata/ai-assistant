@@ -182,7 +182,7 @@ pub async fn main_action<S>(client:&Client<OpenAIConfig>,
     //create a message for the thread
     let message = CreateMessageRequestArgs::default()
         .role("user")
-        .content(input.clone())
+        .content(input)
         .build()?;
 
     //attach message to the thread

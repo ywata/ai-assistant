@@ -1,7 +1,7 @@
-use std::fs;
+
 
 use serde::{Serialize, Deserialize};
-use serde_yaml::{Value, Error};
+use serde_yaml::{Value};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct OpenAIConfig{
@@ -26,6 +26,5 @@ fn test_serde_yaml_from_file(){
     foo:
       bar:1
     "#;
-    let value = serde_yaml::from_str(yaml_str)
-        .and_then(|v:Value|Ok(()));
+    let _value = serde_yaml::from_str(yaml_str).map(|_v:Value| ());
 }

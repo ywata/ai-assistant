@@ -1,6 +1,6 @@
+use log::error;
 use serde::Deserialize;
 use std::collections::HashMap;
-use log::error;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Input {
@@ -64,10 +64,10 @@ fn list_workflow_inputs(workflow: &Workflow) -> Vec<(String, String)> {
             match directive {
                 Directive::PassResultTo { name, tag } => {
                     vec.push((name.clone(), tag.clone()));
-                },
+                }
                 Directive::JumpTo { name, tag } => {
                     vec.push((name.clone(), tag.clone()));
-                },
+                }
                 _ => {}
             }
         }

@@ -15,6 +15,7 @@ use crate::scenario::Prompt;
 use crate::OpenAIApiError::OpenAIAccessError;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use log::{debug, error, info};
 
 pub mod scenario;
 
@@ -259,13 +260,13 @@ where
                     }
                 };
                 //print the text
-                println!("--- Response: {}", &text);
+                info!("--- Response: {}", &text);
 
                 saver.save(out_dir, text).await?;
             }
             RunStatus::Failed => {
                 awaiting_response = false;
-                println!("--- Run Failed: {:#?}", run);
+                error!("--- Run Failed: {:#?}", run);
             }
             otherwise => report_status(otherwise),
         }
@@ -299,7 +300,7 @@ pub async fn ask(
             .content(input.clone())
             .build()
             .map_err(|e| (name.clone(), e.into()))?;
-        println!("Create message request args: {:#?}", message);
+        debug!("Create message request args: {:#?}", message);
         //attach message to the thread
         let _message_obj = client
             .threads()
@@ -307,7 +308,7 @@ pub async fn ask(
             .create(message)
             .await
             .map_err(|_| (name.clone(), OpenAIApiError::OpenAIAccessError))?;
-        println!("messagne created");
+        debug!("messagne created");
         //create a run for the thread
         let run_request = CreateRunRequestArgs::default()
             .assistant_id(assistant_id)
@@ -319,7 +320,7 @@ pub async fn ask(
             .create(run_request)
             .await
             .map_err(|e| (name.clone(), e.into()))?;
-        println!("Start waiting for response");
+        debug!("Start waiting for response");
         //wait for the run to complete
         let mut awaiting_response = true;
         while awaiting_response {
@@ -366,13 +367,13 @@ pub async fn ask(
                         }
                     };
                     //print the text
-                    println!("--- Response: {}", &text);
+                    info!("--- Response: {}", &text);
                     return Ok((name, text.clone()));
                 }
 
                 RunStatus::Failed => {
                     awaiting_response = false;
-                    println!("--- Run Failed: {:#?}", run);
+                    error!("--- Run Failed: {:#?}", run);
                 }
 
                 otherwise => report_status(otherwise),
@@ -388,22 +389,22 @@ pub async fn ask(
 pub fn report_status(status: RunStatus) {
     match status {
         RunStatus::Queued => {
-            println!("--- Run Queued");
+            info!("--- Run Queued");
         }
         RunStatus::Cancelling => {
-            println!("--- Run Cancelling");
+            info!("--- Run Cancelling");
         }
         RunStatus::Cancelled => {
-            println!("--- Run Cancelled");
+            info!("--- Run Cancelled");
         }
         RunStatus::Expired => {
-            println!("--- Run Expired");
+            info!("--- Run Expired");
         }
         RunStatus::RequiresAction => {
-            println!("--- Run Requires Action");
+            info!("--- Run Requires Action");
         }
         RunStatus::InProgress => {
-            println!("--- Waiting for response...");
+            info!("--- Waiting for response...");
         }
         _ => panic!("should not reach here"),
     }

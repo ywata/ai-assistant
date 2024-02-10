@@ -17,7 +17,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use openai_api::{connect, Context, Conversation, OpenAi, OpenAIApiError};
+use openai_api::{connect, Context, Conversation, create_opeai_client, OpenAi, OpenAIApiError};
 
 use crate::compile::compile;
 use openai_api::scenario::{Prompt, Workflow, Directive};
@@ -263,8 +263,13 @@ impl Application for Model {
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
+        #[cfg(not(azure_ai))]
+        let client = create_opeai_client(&flags.1);
+        #[cfg(azure_ai)]
+        let client = create_opeai_client(&flags.1);
+
         let commands = vec![
-            Command::perform(connect(flags.1.clone(), flags.0.prompt_keys.clone(), flags.2.clone()),
+            Command::perform(connect(flags.1.clone(), client, flags.0.prompt_keys.clone(), flags.2.clone()),
                 Message::Connected),
             Command::perform(load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
                 Message::InputLoaded)];

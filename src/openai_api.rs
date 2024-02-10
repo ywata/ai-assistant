@@ -78,40 +78,47 @@ impl Context {
     }
 }
 
-
-fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
+#[cfg(not(azure_ai))]
+pub fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
     match config {
-        OpenAi::OpenAiToken { token,..} => {
+        OpenAi::OpenAiToken { token, .. } => {
             let token = token.as_str();
             let oai_config: OpenAIConfig = OpenAIConfig::default()
                 .with_api_key(token);
 
             //create a client
-            
+
             Client::with_config(oai_config)
         },
+        _ => Client::<OpenAIConfig>::new()
+    }
+}
+#[cfg(azure_ai)]
+pub fn create_opeai_client(config: &OpenAi) -> Client<AzureConfig> {
+    match config {
         OpenAi::AzureAiToken { key, endpoint,.. } => {
             let key = key.as_str();
             let endpoint = endpoint.as_str();
-            let oai_config: OpenAIConfig = OpenAIConfig::default()
+            let oai_config: AzureConfig = AzureConfig::default()
                 .with_api_key(key)
                 .with_api_base(endpoint);
 
             //create a client
             Client::with_config(oai_config)
         },
+        _ => Client::<AzureConfig>::new()
     }
 }
 
-pub async fn connect(config: OpenAi, names: Vec<String>, prompts: HashMap<String, Prompt> )
+
+pub async fn connect(config: OpenAi, client: Client<OpenAIConfig>, names: Vec<String>, prompts: HashMap<String, Prompt> )
                  -> Result<Context, OpenAIApiError> {
-    let client = create_opeai_client(&config);
     let mut context: Context = Context::new(client);
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
             let (thread, assistant)
-                = setup_assistant(&config, &key, &context.client, &prompt.instruction).await?;
+                = setup_assistant(&config, &context.client, &key, &prompt.instruction).await?;
             let interaction = Interaction {
                 name: key.clone(),
                 thread,
@@ -131,7 +138,7 @@ pub async fn connect(config: OpenAi, names: Vec<String>, prompts: HashMap<String
 
 
 
-async fn setup_assistant(config: &OpenAi, name: &String, client: &Client<OpenAIConfig>, prompt: &String, )
+async fn setup_assistant(config: &OpenAi, client: &Client<OpenAIConfig>, name: &String,  prompt: &String, )
     -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;

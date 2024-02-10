@@ -36,7 +36,7 @@ pub enum Directive {
     KeepAsIs,
     PassResultTo { name: String, tag: String },
     JumpTo { name: String, tag: String },
-    Stop
+    Stop,
 }
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct Workflow {
@@ -56,6 +56,9 @@ impl Workflow {
     }
 }
 
-pub fn parse_scenario(prompts: HashMap<String, Prompt>, workflow: Workflow) -> Option<(HashMap<String, Prompt>, Workflow)> {
+pub fn parse_scenario(
+    prompts: HashMap<String, Prompt>,
+    workflow: Workflow,
+) -> Option<(HashMap<String, Prompt>, Workflow)> {
     Some((prompts, workflow))
 }

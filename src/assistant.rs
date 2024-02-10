@@ -99,7 +99,7 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompt_hash : HashMap<String, Prompt> = config::read_config(None, &prompt_content)?;
+    let prompt_hash: HashMap<String, Prompt> = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
     let wf = if let Some(ref file) = args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
@@ -118,7 +118,6 @@ pub fn main() -> Result<(), AssistantError> {
     } else {
         Err(AssistantError::AppAccessError)
     }
-
 }
 
 #[derive(Clone, Debug)]

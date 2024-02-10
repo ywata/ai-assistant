@@ -13,9 +13,9 @@ use std::sync::Arc;
 
 use crate::scenario::Prompt;
 use crate::OpenAIApiError::OpenAIAccessError;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use log::{debug, error, info};
 
 pub mod scenario;
 

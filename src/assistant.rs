@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use openai_api::{connect, create_opeai_client, Context, Conversation, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use openai_api::scenario::{Directive, Prompt, Workflow};
+use openai_api::scenario::{parse_scenario, Directive, Prompt, Workflow};
 
 //use thiserror::Error;
 mod compile;
@@ -97,23 +97,26 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompts = config::read_config(None, &prompt_content)?;
+    let prompt_hash : HashMap<String, Prompt> = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
-    let workflow = if let Some(ref file) = args.workflow_file {
+    let wf = if let Some(ref file) = args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
         config::read_config(None, &workflow_content)?
     } else {
         Workflow::default()
     };
-    debug!("workflow:{:?}", &workflow);
+    if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
+        let settings = Settings::default();
+        let updated_settings = Settings {
+            flags: (args, config, prompts, workflow),
+            ..settings
+        };
 
-    let settings = Settings::default();
-    let updated_settings = Settings {
-        flags: (args, config, prompts, workflow),
-        ..settings
-    };
+        Ok(Model::run(updated_settings)?)
+    } else {
+        Err(AssistantError::AppAccessError)
+    }
 
-    Ok(Model::run(updated_settings)?)
 }
 
 #[derive(Clone, Debug)]

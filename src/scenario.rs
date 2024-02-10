@@ -55,3 +55,7 @@ impl Workflow {
             .clone()
     }
 }
+
+pub fn parse_scenario(prompts: HashMap<String, Prompt>, workflow: Workflow) -> Option<(HashMap<String, Prompt>, Workflow)> {
+    Some((prompts, workflow))
+}

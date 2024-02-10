@@ -263,6 +263,11 @@ impl Application for Model {
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
+
+        // As OpenAICOnfig and AzureConfig cannot co-exists in a generic way,
+        // we need to use conditional compilation.
+        // It might be good to place this in main() but it introduces a lot of
+        // conditional compilation.
         #[cfg(not(azure_ai))]
         let client = create_opeai_client(&flags.1);
         #[cfg(azure_ai)]

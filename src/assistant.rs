@@ -554,6 +554,7 @@ fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
             name: name.to_string(),
             tag: tag.to_string(),
         },
+        Directive::Stop => Message::DoNothing,
     }
 }
 

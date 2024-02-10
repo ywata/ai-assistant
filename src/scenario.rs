@@ -36,6 +36,7 @@ pub enum Directive {
     KeepAsIs,
     PassResultTo { name: String, tag: String },
     JumpTo { name: String, tag: String },
+    Stop
 }
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct Workflow {

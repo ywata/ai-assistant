@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use openai_api::{connect, create_opeai_client, Context, Conversation, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use openai_api::scenario::{parse_scenario, Directive, Prompt, Workflow};
+use openai_api::scenario::{parse_scenario, Directive, Prompt, Workflow, parse_cli_settings};
 
 //use thiserror::Error;
 mod compile;
@@ -107,6 +107,10 @@ pub fn main() -> Result<(), AssistantError> {
     } else {
         Workflow::default()
     };
+    let _given_keys = parse_cli_settings(&prompt_hash, &args.prompt_keys, &args.tag)
+        .ok_or(AssistantError::AppAccessError)?;
+
+
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         let settings = Settings::default();
         let updated_settings = Settings {
@@ -173,6 +177,7 @@ struct Model {
     edit_areas: Vec<EditArea>,
     current: (String, String),
     workflow: Workflow,
+    auto: Option<usize>,
 }
 
 #[derive(Error, Clone, Debug)]
@@ -317,6 +322,7 @@ impl Application for Model {
                 edit_areas: vec![prompt, input, result],
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
+                auto: flags.0.auto,
             },
             Command::batch(commands),
         )

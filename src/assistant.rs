@@ -183,6 +183,9 @@ struct Model {
 pub enum AssistantError {
     #[error("file already exists for the directory")]
     FileExists(),
+    #[error("IO error")]
+    IoError,
+
     #[error("API access failed")]
     AppAccessError,
 }
@@ -202,10 +205,14 @@ impl From<openai_api::OpenAIApiError> for AssistantError {
 }
 impl From<std::io::Error> for AssistantError {
     fn from(error: std::io::Error) -> AssistantError {
-        dbg!(error);
-        AssistantError::AppAccessError
+        dbg!(&error);
+        match error.kind() {
+            io::ErrorKind::AlreadyExists => AssistantError::FileExists(),
+            _ => AssistantError::IoError,
+        }
     }
 }
+
 impl From<config::ConfigError> for AssistantError {
     fn from(error: config::ConfigError) -> AssistantError {
         dbg!(error);

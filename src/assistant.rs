@@ -129,8 +129,6 @@ enum Message {
     LoadInput { name: String, tag: String },
     PassResult { name: String, tag: String },
     InputLoaded(Option<LoadedInput>),
-    OpenFile(AreaIndex),
-    FileOpened(Result<(AreaIndex, (PathBuf, Arc<String>)), (AreaIndex, Error)>),
     ActionPerformed(AreaIndex, text_editor::Action),
     QueryAi { name: String, tag: String },
     Answered(Result<(String, String), (String, OpenAIApiError)>),
@@ -204,6 +202,9 @@ pub enum AssistantError {
     FileExists(),
     #[error("IO error")]
     IoError,
+
+    #[error("API call error")]
+    APIError,
 
     #[error("API access failed")]
     AppAccessError,
@@ -366,7 +367,6 @@ impl Application for Model {
                 self.context = Some(Arc::new(Mutex::new(ctx)));
                 Command::none()
             }
-            Message::OpenFile(_idx) => Command::none(),
             Message::Connected(Err(_)) => Command::none(),
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
@@ -404,18 +404,6 @@ impl Application for Model {
                 Command::none()
             }
             Message::InputLoaded(None) => Command::none(),
-            Message::FileOpened(result) => {
-                if let Ok((idx, (path, contents))) = result {
-                    let content = text_editor::Content::with_text(&contents);
-                    let default = EditArea::default();
-                    self.edit_areas[idx as usize] = EditArea {
-                        path: Some(path),
-                        content,
-                        ..default
-                    };
-                }
-                Command::none()
-            }
             Message::ActionPerformed(idx, action) => {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
@@ -566,17 +554,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     items
 }
 
-async fn load_file<T: Copy>(
-    idx: T,
-    path: PathBuf,
-) -> Result<(T, (PathBuf, Arc<String>)), (T, Error)> {
-    let contents = tokio::fs::read_to_string(&path)
-        .await
-        .map(Arc::new)
-        .map_err(|error| (idx, Error::IoError(error.kind())))?;
-
-    Ok((idx, (path.clone(), contents)))
-}
 
 fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
     debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);
@@ -601,17 +578,11 @@ struct Response {
     possible: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-enum Error {
-    APIError,
-    IoError(io::ErrorKind),
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(error: reqwest::Error) -> Error {
+impl From<reqwest::Error> for AssistantError {
+    fn from(error: reqwest::Error) -> AssistantError {
         dbg!(error);
 
-        Error::APIError
+        AssistantError::APIError
     }
 }
 

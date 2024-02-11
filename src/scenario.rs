@@ -104,16 +104,18 @@ pub fn parse_scenario(
     Some((prompts, workflow))
 }
 
-pub fn parse_cli_settings<'a>(prompts: &'a HashMap<String, Prompt>, keys: &'a Vec<String>, tag: &'a String)
-    -> Option<(&'a Vec<String>, &'a String)>{
-
+pub fn parse_cli_settings<'a>(
+    prompts: &'a HashMap<String, Prompt>,
+    keys: &'a Vec<String>,
+    tag: &'a String,
+) -> Option<(&'a Vec<String>, &'a String)> {
     if keys.is_empty() {
-        return None
+        return None;
     }
 
     let mut input_specifiers = list_input_specifiers(prompts);
     for key in keys.iter() {
-        if !prompts.keys().any(|x| x == key){
+        if !prompts.keys().any(|x| x == key) {
             error!("({},{}) is not in {:?}", tag, key, input_specifiers);
             return None;
         }

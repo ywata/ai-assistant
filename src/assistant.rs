@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use openai_api::{connect, create_opeai_client, Context, Conversation, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use openai_api::scenario::{parse_scenario, Directive, Prompt, Workflow, parse_cli_settings};
+use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
 
 //use thiserror::Error;
 mod compile;
@@ -109,7 +109,6 @@ pub fn main() -> Result<(), AssistantError> {
     };
     let _given_keys = parse_cli_settings(&prompt_hash, &args.prompt_keys, &args.tag)
         .ok_or(AssistantError::AppAccessError)?;
-
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         let settings = Settings::default();

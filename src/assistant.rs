@@ -101,7 +101,7 @@ pub fn main() -> Result<(), AssistantError> {
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
     let prompt_hash: HashMap<String, Prompt> = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
-    let wf = if let Some(ref file) = args.workflow_file {
+    let wf = if let Some(ref file) = &args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
         config::read_config(None, &workflow_content)?
     } else {
@@ -113,7 +113,7 @@ pub fn main() -> Result<(), AssistantError> {
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         let settings = Settings::default();
         let updated_settings = Settings {
-            flags: (args, config, prompts, workflow),
+            flags: (args.clone(), config, prompts, workflow, args.auto),
             ..settings
         };
 
@@ -177,6 +177,25 @@ struct Model {
     current: (String, String),
     workflow: Workflow,
     auto: Option<usize>,
+}
+
+impl Model {
+    fn dec_auto(&mut self) {
+        if let Some(auto) = self.auto {
+            if auto > 0 {
+                info!("dec_auto(): {:?}", &self.auto);
+                self.auto = Some(auto - 1);
+            }
+        }
+    }
+    fn auto_enabled(&self) -> bool {
+        if let Some(auto) = self.auto {
+            if auto > 0 {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 #[derive(Error, Clone, Debug)]
@@ -286,6 +305,7 @@ impl Application for Model {
         OpenAi,
         HashMap<String, openai_api::scenario::Prompt>,
         Workflow,
+        Option<usize>,
     );
 
     fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
@@ -410,6 +430,7 @@ impl Application for Model {
                         ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })
                     });
 
+                    let _ = self.dec_auto();
                     Command::perform(
                         openai_api::ask(
                             pass_context,

@@ -30,7 +30,7 @@ winit = { git = "https://github.com/iced-rs/winit.git", rev = "c52db2045d0a2f1b8
 rfd = "0.12"
 
 log = "0.4"
-env_logger = "0.9"
+env_logger = "0.11"
 
 [lib]
 name = "openai_api"

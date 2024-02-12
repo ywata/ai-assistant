@@ -127,11 +127,12 @@ pub fn main() -> Result<(), AssistantError> {
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
     LoadInput { name: String, tag: String },
-    PassResult { name: String, tag: String },
     InputLoaded(Option<LoadedInput>),
+    PassResult { name: String, tag: String },
+
     ActionPerformed(AreaIndex, text_editor::Action),
-    QueryAi { name: String, tag: String },
-    Answered(Result<(String, String), (String, OpenAIApiError)>),
+    QueryAi { name: String, tag: String, auto: bool },
+    Answered{answer: Result<(String, String), (String, OpenAIApiError)>, auto: bool},
     Compiled(Result<Output, AssistantError>),
     DoNothing,
 }
@@ -408,7 +409,7 @@ impl Application for Model {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
             }
-            Message::QueryAi { name, .. } => {
+            Message::QueryAi { name, auto, .. } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
@@ -425,16 +426,16 @@ impl Application for Model {
                             pass_name,
                             self.edit_areas[AreaIndex::Input as usize].content.text(),
                         ),
-                        Message::Answered,
+                        move |answer| Message::Answered{answer, auto:auto.clone()},
                     )
                 } else {
                     Command::none()
                 }
             }
-            Message::Answered(res) => {
-                info!("{:?}", res);
+            Message::Answered{answer, auto} => {
+                info!("{:?}", answer);
                 let mut command = Command::none();
-                match res {
+                match answer {
                     Ok((name, text)) => {
                         let opt_markers = self.env.get_markers();
                         let mut content = text_editor::Content::with_text("");
@@ -521,8 +522,14 @@ impl Application for Model {
                     )),
                     button("Ask AI".to_string(), "".to_string()).on_press(Message::QueryAi {
                         name: self.current.0.clone(),
-                        tag: self.current.1.clone()
-                    })
+                        tag: self.current.1.clone(),
+                        auto: false,
+                    }),
+                    button("auto".to_string(), "".to_string()).on_press(Message::QueryAi {
+                        name: self.current.0.clone(),
+                        tag: self.current.1.clone(),
+                        auto: true,
+                    }),
                 ]
                 .align_items(Alignment::End)
                 .width(iced::Length::Fill),

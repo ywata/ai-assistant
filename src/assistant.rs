@@ -134,6 +134,8 @@ enum Message {
     QueryAi { name: String, tag: String, auto: bool },
     Answered{answer: Result<(String, String), (String, OpenAIApiError)>, auto: bool},
     Compiled(Result<Output, AssistantError>),
+
+    SaveConversation { outut_dir: String},
     DoNothing,
 }
 
@@ -499,6 +501,14 @@ impl Application for Model {
                 debug!("{:?}", msg);
                 Command::none()
             }
+            Message::SaveConversation { outut_dir } => {
+                let context = self.context.clone().unwrap();
+                let _handle = tokio::spawn(async move {
+                    let mut ctx = context.lock().await;
+                    ctx.save_conversation(outut_dir)
+                });
+                Command::none()
+            }
             Message::DoNothing => Command::none(),
         }
     }
@@ -529,6 +539,9 @@ impl Application for Model {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: true,
+                    }),
+                    button("save".to_string(), "".to_string()).on_press(Message::SaveConversation {
+                        outut_dir: self.env.output_dir.clone(),
                     }),
                 ]
                 .align_items(Alignment::End)

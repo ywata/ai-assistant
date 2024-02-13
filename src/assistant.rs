@@ -128,7 +128,7 @@ enum Message {
     Connected(Result<Context, OpenAIApiError>),
     LoadInput { name: String, tag: String },
 
-    //PassResult { auto: bool, name: String, tag: String },
+    PassResult { auto: bool, name: String, tag: String },
     NextWorkflow{auto: bool},
 
     ActionPerformed(AreaIndex, text_editor::Action),
@@ -276,19 +276,6 @@ fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
     })
 }
 
-async fn pass_result(prompt: Prompt, tag: String, curr_result: String) -> Option<LoadedInput> {
-    debug!(
-        "pass_result(): prompt:{:?}, tag:{}, curr_result:{}",
-        &prompt, &tag, &curr_result
-    );
-    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        (LoadedInput {
-            prompt: prompt.instruction.clone(),
-            prefix: i.prefix.clone(),
-            input: curr_result,
-        })
-    })
-}
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
@@ -300,6 +287,15 @@ fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     }
     res
 }
+
+fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &String) {
+    let default = EditArea::default();
+    area[idx as usize] = EditArea {
+        content: text_editor::Content::with_text(&text),
+        ..default
+    };
+}
+
 
 impl Application for Model {
     type Message = Message;
@@ -376,13 +372,40 @@ impl Application for Model {
                 Command::none()
             }
             Message::Connected(Err(_)) => Command::none(),
+
             Message::NextWorkflow {auto}=> {
                 let wf = &self.workflow;
                 let name = &self.current.0;
                 let tag = &self.current.1;
-                let message = dispatch_direction(wf, auto, name, tag);
-                Command::none()
+                let dispatched = match wf.get_directive(name, tag) {
+                    Directive::KeepAsIs => Command::<Message>::none(),
+                    Directive::JumpTo { name, tag } => {
+                        let loaded = load_input(self.prompts.get(&name).unwrap().clone(), tag.clone());
+                        if let Some(i) = loaded {
+                            let default = EditArea::default();
+                            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
+                            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
+                            let default = EditArea::default();
+                            set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
+                        }
+                        Command::none()
+                    },
+                    Directive::PassResultTo { name, tag } => {
+                        let loaded = load_input(self.prompts.get(&name).unwrap().clone(), tag.clone());
+                        if let Some(i) = loaded {
+                            let default = EditArea::default();
+                            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
+                            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
+                            let default = EditArea::default();
+                            set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
+                        }
+                        Command::none()
+                    },
+                    Directive::Stop => Command::none(),
+                };
+                dispatched
             }
+            Message::PassResult {..} => todo! (),
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
                 self.current = (name.clone(), tag.clone());
@@ -390,21 +413,13 @@ impl Application for Model {
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
                 let result = load_input(prompt, tag)
                     .map(|i| {
-                        let prompt = i.prompt.clone();
-                        let prefix = i.prefix.clone();
                         let input = i.input.clone();
-
-                        let default = EditArea::default();
+                        let prefix = i.prefix.clone();
                         let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-                        self.edit_areas[AreaIndex::Input as usize] = EditArea {
-                            content: text_editor::Content::with_text(&prefixed_text),
-                            ..default
-                        };
-                        let default = EditArea::default();
-                        self.edit_areas[AreaIndex::Prompt as usize] = EditArea {
-                            content: text_editor::Content::with_text(&prompt),
-                            ..default
-                        };
+                        set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
+
+                        let prompt = i.prompt.clone();
+                        set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &prompt);
                     }).ok_or(());
                 Command::none()
             }

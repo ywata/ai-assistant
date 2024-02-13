@@ -28,7 +28,8 @@ pub enum OpenAi {
     AzureAiToken {
         key: String,
         endpoint: String,
-        model: String,
+        deployment_id: String,
+        api_version: String,
     },
 }
 
@@ -36,7 +37,7 @@ impl OpenAi {
     fn get_model(&self) -> String {
         match self {
             OpenAi::OpenAiToken { model, .. } => model.clone(),
-            OpenAi::AzureAiToken { model, .. } => model.clone(),
+            OpenAi::AzureAiToken { .. } => "".to_string(),
         }
     }
 }
@@ -91,10 +92,15 @@ impl Context {
             .conversation
             .push(conversation);
     }
+
+    pub fn save_conversation(&self, name: String) {
+        println!("Saving conversation: {:?}", &self.interactions);
+    }
 }
 
 #[cfg(not(azure_ai))]
 pub fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
+    info!("Creating openai client");
     match config {
         OpenAi::OpenAiToken { token, .. } => {
             let token = token.as_str();
@@ -109,6 +115,7 @@ pub fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
 }
 #[cfg(azure_ai)]
 pub fn create_opeai_client(config: &OpenAi) -> Client<AzureConfig> {
+    info!("Creating azure ai client");
     match config {
         OpenAi::AzureAiToken { key, endpoint, .. } => {
             let key = key.as_str();

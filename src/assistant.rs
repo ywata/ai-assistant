@@ -127,8 +127,9 @@ pub fn main() -> Result<(), AssistantError> {
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
     LoadInput { name: String, tag: String },
-    InputLoaded(Option<LoadedInput>),
-    PassResult { name: String, tag: String },
+
+    //PassResult { auto: bool, name: String, tag: String },
+    NextWorkflow{auto: bool},
 
     ActionPerformed(AreaIndex, text_editor::Action),
     QueryAi { name: String, tag: String, auto: bool },
@@ -263,7 +264,7 @@ struct LoadedInput {
     prefix: Option<String>,
     input: String,
 }
-async fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
+fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
     debug!("load_input(): prompt:{:?}, tag:{}", &prompt, &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
@@ -315,8 +316,8 @@ impl Application for Model {
     fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
-        let prompt = EditArea::default();
-        let input = EditArea::default();
+        let mut prompt = EditArea::default();
+        let mut input = EditArea::default();
         let result = EditArea::default();
 
         // As OpenAICOnfig and AzureConfig cannot co-exists in a generic way,
@@ -327,7 +328,15 @@ impl Application for Model {
         let client = create_opeai_client(&flags.1);
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-
+        let loaded = load_input(flags.2.get(name).unwrap().clone(), tag.clone());
+        // Initialize EditArea with loaded input.
+        if let Some(i) = loaded {
+            let default = EditArea::default();
+            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
+            input.content = text_editor::Content::with_text(&prefixed_text);
+            let default = EditArea::default();
+            prompt.content = text_editor::Content::with_text(&i.prompt);
+        }
         let commands = vec![
             Command::perform(
                 connect(
@@ -337,10 +346,6 @@ impl Application for Model {
                     flags.2.clone(),
                 ),
                 Message::Connected,
-            ),
-            Command::perform(
-                load_input(flags.2.get(name).unwrap().clone(), tag.clone()),
-                Message::InputLoaded,
             ),
         ];
 
@@ -371,42 +376,38 @@ impl Application for Model {
                 Command::none()
             }
             Message::Connected(Err(_)) => Command::none(),
+            Message::NextWorkflow {auto}=> {
+                let wf = &self.workflow;
+                let name = &self.current.0;
+                let tag = &self.current.1;
+                let message = dispatch_direction(wf, auto, name, tag);
+                Command::none()
+            }
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
                 self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
-                Command::perform(load_input(prompt, tag), Message::InputLoaded)
-            }
-            Message::PassResult { name, tag } => {
-                let curr_result = &self.edit_areas[AreaIndex::Result as usize].content.text();
-                Command::perform(
-                    pass_result(
-                        self.prompts.get(&name).unwrap().clone(),
-                        tag,
-                        curr_result.clone(),
-                    ),
-                    Message::InputLoaded,
-                )
-            }
-            Message::InputLoaded(Some(LoadedInput {
-                prompt,
-                prefix,
-                input: text,
-            })) => {
-                let default = EditArea::default();
-                let prefixed_text = prefix.unwrap_or_default() + "\n" + &text;
-                self.edit_areas[AreaIndex::Input as usize] = EditArea {
-                    content: text_editor::Content::with_text(&prefixed_text),
-                    ..default
-                };
-                let default = EditArea::default();
-                self.edit_areas[AreaIndex::Prompt as usize] = EditArea {
-                    content: text_editor::Content::with_text(&prompt),
-                    ..default
-                };
+                //Command::perform(load_input(prompt, tag), Message::InputLoaded)
+                let result = load_input(prompt, tag)
+                    .map(|i| {
+                        let prompt = i.prompt.clone();
+                        let prefix = i.prefix.clone();
+                        let input = i.input.clone();
+
+                        let default = EditArea::default();
+                        let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
+                        self.edit_areas[AreaIndex::Input as usize] = EditArea {
+                            content: text_editor::Content::with_text(&prefixed_text),
+                            ..default
+                        };
+                        let default = EditArea::default();
+                        self.edit_areas[AreaIndex::Prompt as usize] = EditArea {
+                            content: text_editor::Content::with_text(&prompt),
+                            ..default
+                        };
+                    }).ok_or(());
                 Command::none()
             }
-            Message::InputLoaded(None) => Command::none(),
             Message::ActionPerformed(idx, action) => {
                 self.edit_areas[idx as usize].content.perform(action);
                 Command::none()
@@ -525,11 +526,7 @@ impl Application for Model {
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
-                    button("Next".to_string(), "".to_string()).on_press(load_message(
-                        &self.workflow,
-                        &self.current.0,
-                        &self.current.1
-                    )),
+                    button("Next".to_string(), "".to_string()).on_press(Message::NextWorkflow{auto: self.auto_enabled()}),
                     button("Ask AI".to_string(), "".to_string()).on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
@@ -575,7 +572,7 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
 }
 
 
-fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
+fn dispatch_direction(wf: &Workflow, auto: bool, name: &str, tag: &str) -> Message {
     debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);
     let directive = wf.get_directive(name, tag);
     match directive {
@@ -584,9 +581,10 @@ fn load_message(wf: &Workflow, name: &str, tag: &str) -> Message {
             name: name.to_string(),
             tag: tag.to_string(),
         },
-        Directive::PassResultTo { name, tag } => Message::PassResult {
+        Directive::PassResultTo { name, tag } => Message::LoadInput {
             name: name.to_string(),
             tag: tag.to_string(),
+            //auto: auto,
         },
         Directive::Stop => Message::DoNothing,
     }

@@ -186,8 +186,6 @@ async fn setup_assistant(
     Ok((thread, assistant))
 }
 
-
-
 pub async fn ask(
     context: Arc<Mutex<Context>>,
     name: String,

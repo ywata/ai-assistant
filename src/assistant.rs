@@ -12,6 +12,7 @@ use iced::{Alignment, Application, Command, Element, Settings, Theme};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
+use iced::widget::text_editor::Edit;
 use log::{debug, error, info, trace};
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -126,17 +127,31 @@ pub fn main() -> Result<(), AssistantError> {
 #[derive(Clone, Debug)]
 enum Message {
     Connected(Result<Context, OpenAIApiError>),
-    LoadInput { name: String, tag: String },
+    LoadInput {
+        name: String,
+        tag: String,
+    },
 
-    PassResult { auto: bool, name: String, tag: String },
-    NextWorkflow{auto: bool},
+    NextWorkflow {
+        auto: bool,
+    },
 
     ActionPerformed(AreaIndex, text_editor::Action),
-    QueryAi { name: String, tag: String, auto: bool },
-    Answered{answer: Result<(String, String), (String, OpenAIApiError)>, auto: bool},
+
+    QueryAi {
+        name: String,
+        tag: String,
+        auto: bool,
+    },
+    Answered {
+        answer: Result<(String, String), (String, OpenAIApiError)>,
+        auto: bool,
+    },
     Compiled(Result<Output, AssistantError>),
 
-    SaveConversation { outut_dir: String},
+    SaveConversation {
+        outut_dir: String,
+    },
     DoNothing,
 }
 
@@ -259,16 +274,16 @@ async fn save_and_compile(output_path: PathBuf, code: String) -> Result<Output, 
 }
 
 #[derive(Debug, Clone)]
-struct LoadedInput {
+struct LoadedData {
     prompt: String,
     prefix: Option<String>,
     input: String,
 }
-fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
-    debug!("load_input(): prompt:{:?}, tag:{}", &prompt, &tag);
+fn load_data(prompt: Prompt, tag: String) -> Option<LoadedData> {
+    debug!("load_data(): prompt:{:?} tag:{}", &prompt, &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        (LoadedInput {
+        (LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
             input: i.text.clone(),
@@ -276,6 +291,16 @@ fn load_input(prompt: Prompt, tag: String) -> Option<LoadedInput> {
     })
 }
 
+fn load_content(prompt: Prompt, tag: String, edit_area: &EditArea) -> Option<LoadedData> {
+    debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
+    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
+        (LoadedData {
+            prompt: prompt.instruction.clone(),
+            prefix: i.prefix.clone(),
+            input: edit_area.content.text().clone(),
+        })
+    })
+}
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     let mut res = None;
@@ -295,7 +320,6 @@ fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &Stri
         ..default
     };
 }
-
 
 impl Application for Model {
     type Message = Message;
@@ -324,7 +348,7 @@ impl Application for Model {
         let client = create_opeai_client(&flags.1);
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-        let loaded = load_input(flags.2.get(name).unwrap().clone(), tag.clone());
+        let loaded = load_data(flags.2.get(name).unwrap().clone(), tag.clone());
         // Initialize EditArea with loaded input.
         if let Some(i) = loaded {
             let default = EditArea::default();
@@ -333,17 +357,15 @@ impl Application for Model {
             let default = EditArea::default();
             prompt.content = text_editor::Content::with_text(&i.prompt);
         }
-        let commands = vec![
-            Command::perform(
-                connect(
-                    flags.1.clone(),
-                    client,
-                    flags.0.prompt_keys.clone(),
-                    flags.2.clone(),
-                ),
-                Message::Connected,
+        let commands = vec![Command::perform(
+            connect(
+                flags.1.clone(),
+                client,
+                flags.0.prompt_keys.clone(),
+                flags.2.clone(),
             ),
-        ];
+            Message::Connected,
+        )];
 
         (
             Model {
@@ -373,45 +395,79 @@ impl Application for Model {
             }
             Message::Connected(Err(_)) => Command::none(),
 
-            Message::NextWorkflow {auto}=> {
+            Message::NextWorkflow { auto } => {
                 let wf = &self.workflow;
-                let name = &self.current.0;
-                let tag = &self.current.1;
-                let dispatched = match wf.get_directive(name, tag) {
-                    Directive::KeepAsIs => Command::<Message>::none(),
+                let name = self.current.0.clone();
+                let tag = self.current.1.clone();
+                let mut do_next = false;
+                info!("current: name:{}, tag:{}", &name, &tag);
+                let _ = match wf.get_directive(&name, &tag) {
+                    Directive::KeepAsIs => (),
+                    Directive::Stop => (),
+
                     Directive::JumpTo { name, tag } => {
-                        let loaded = load_input(self.prompts.get(&name).unwrap().clone(), tag.clone());
+                        info!("JumpTo: name:{}, tag:{}", name, tag);
+
+                        let loaded =
+                            load_data(self.prompts.get(&name).unwrap().clone(), tag.clone());
                         if let Some(i) = loaded {
-                            let default = EditArea::default();
+                            self.current = (name.clone(), tag.clone());
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
-                            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
-                            let default = EditArea::default();
+                            set_editor_contents(
+                                &mut self.edit_areas,
+                                AreaIndex::Input,
+                                &prefixed_text,
+                            );
                             set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
+                            do_next = true;
                         }
-                        Command::none()
-                    },
+                    }
                     Directive::PassResultTo { name, tag } => {
-                        let loaded = load_input(self.prompts.get(&name).unwrap().clone(), tag.clone());
+                        info!("PassResultTo: name:{}, tag:{}", name, tag);
+                        self.current = (name.clone(), tag.clone());
+                        let loaded = load_content(
+                            self.prompts.get(&name).unwrap().clone(),
+                            tag.clone(),
+                            &self.edit_areas[AreaIndex::Result as usize],
+                        );
                         if let Some(i) = loaded {
-                            let default = EditArea::default();
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
-                            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
-                            let default = EditArea::default();
+                            self.current = (name.clone(), tag.clone());
+                            set_editor_contents(
+                                &mut self.edit_areas,
+                                AreaIndex::Input,
+                                &prefixed_text,
+                            );
                             set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
+                            do_next = true;
                         }
-                        Command::none()
-                    },
-                    Directive::Stop => Command::none(),
+                    }
                 };
-                dispatched
+                if auto && do_next {
+                    let pass_context = self.context.clone().unwrap();
+                    let pass_name = name.clone();
+                    Command::perform(
+                        openai_api::ask(
+                            pass_context,
+                            pass_name,
+                            self.edit_areas[AreaIndex::Input as usize].content.text(),
+                        ),
+                        move |answer| Message::Answered {
+                            answer,
+                            auto: auto.clone(),
+                        },
+                    )
+                } else {
+                    Command::none()
+                }
             }
-            Message::PassResult {..} => todo! (),
+
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
                 self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let result = load_input(prompt, tag)
+                let result = load_data(prompt, tag)
                     .map(|i| {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
@@ -420,7 +476,8 @@ impl Application for Model {
 
                         let prompt = i.prompt.clone();
                         set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &prompt);
-                    }).ok_or(());
+                    })
+                    .ok_or(());
                 Command::none()
             }
             Message::ActionPerformed(idx, action) => {
@@ -437,22 +494,28 @@ impl Application for Model {
                         ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })
                     });
 
-                    let _ = self.dec_auto();
                     Command::perform(
                         openai_api::ask(
                             pass_context,
                             pass_name,
                             self.edit_areas[AreaIndex::Input as usize].content.text(),
                         ),
-                        move |answer| Message::Answered{answer, auto:auto.clone()},
+                        move |answer| Message::Answered {
+                            answer,
+                            auto: auto.clone(),
+                        },
                     )
                 } else {
                     Command::none()
                 }
             }
-            Message::Answered{answer, auto} => {
+            Message::Answered { answer, auto } => {
                 info!("{:?}", answer);
+                let _ = self.dec_auto();
+
                 let mut command = Command::none();
+
+
                 match answer {
                     Ok((name, text)) => {
                         let opt_markers = self.env.get_markers();
@@ -511,7 +574,11 @@ impl Application for Model {
                     }
                     _ => error!("FAILED"),
                 }
-                command
+                if auto {
+                    self.update(Message::NextWorkflow { auto: self.auto_enabled() })
+                } else {
+                    command
+                }
             }
             Message::Compiled(msg) => {
                 debug!("{:?}", msg);
@@ -541,7 +608,9 @@ impl Application for Model {
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
-                    button("Next".to_string(), "".to_string()).on_press(Message::NextWorkflow{auto: self.auto_enabled()}),
+                    button("Next".to_string(), "".to_string()).on_press(Message::NextWorkflow {
+                        auto: self.auto_enabled()
+                    }),
                     button("Ask AI".to_string(), "".to_string()).on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
@@ -552,9 +621,11 @@ impl Application for Model {
                         tag: self.current.1.clone(),
                         auto: true,
                     }),
-                    button("save".to_string(), "".to_string()).on_press(Message::SaveConversation {
-                        outut_dir: self.env.output_dir.clone(),
-                    }),
+                    button("save".to_string(), "".to_string()).on_press(
+                        Message::SaveConversation {
+                            outut_dir: self.env.output_dir.clone(),
+                        }
+                    ),
                 ]
                 .align_items(Alignment::End)
                 .width(iced::Length::Fill),
@@ -585,7 +656,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     }
     items
 }
-
 
 fn dispatch_direction(wf: &Workflow, auto: bool, name: &str, tag: &str) -> Message {
     debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);

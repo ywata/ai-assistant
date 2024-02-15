@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 
+use async_openai::config::{AzureConfig, Config, OpenAIConfig};
+use async_openai::Client;
 use regex::Regex;
 use std::process::Output;
 
@@ -17,7 +19,7 @@ use log::{debug, error, info, trace};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use openai_api::{connect, create_opeai_client, Context, Conversation, OpenAIApiError, OpenAi};
+use openai_api::{connect, AiServiceApi, Context, Conversation, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
@@ -112,21 +114,29 @@ pub fn main() -> Result<(), AssistantError> {
         .ok_or(AssistantError::AppAccessError)?;
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
-        let settings = Settings::default();
-        let updated_settings = Settings {
-            flags: (args.clone(), config, prompts, workflow, args.auto),
-            ..settings
-        };
+        #[cfg(not(feature = "azure_ai"))]
+        let client: Option<Client<OpenAIConfig>> = config.create_client();
+        #[cfg(feature = "azure_ai")]
+        let client: Option<Client<AzureConfig>> = config.create_client();
 
-        Ok(Model::run(updated_settings)?)
+        let settings_default = Settings {
+            flags: (args.clone(), config, prompts, workflow, args.auto, client),
+            ..Default::default()
+        };
+        //let updated_settings = Settings {
+        //    flags: (args.clone(), config, prompts, workflow, args.auto, client),
+        //    ..settings
+        //};
+
+        Ok(Model::run(settings_default)?)
     } else {
         Err(AssistantError::AppAccessError)
     }
 }
 
 #[derive(Clone, Debug)]
-enum Message {
-    Connected(Result<Context, OpenAIApiError>),
+enum Message<C: Config> {
+    Connected(Result<Context<C>, OpenAIApiError>),
     LoadInput {
         name: String,
         tag: String,
@@ -182,10 +192,10 @@ enum AreaIndex {
 }
 
 #[derive(Debug)]
-struct Model {
+struct Model<C: Config> {
     env: Cli,
     prompts: HashMap<String, openai_api::scenario::Prompt>,
-    context: Option<Arc<Mutex<Context>>>,
+    context: Option<Arc<Mutex<Context<C>>>>,
     // edit_area contaiins current view of conversation,
     // Prompt is set up on Thread creation time and it is not changed.
     // Input edit_area will be used for querying to AI.
@@ -196,7 +206,7 @@ struct Model {
     auto: Option<usize>,
 }
 
-impl Model {
+impl<C: Config> Model<C> {
     fn dec_auto(&mut self) {
         if let Some(auto) = self.auto {
             if auto > 0 {
@@ -321,8 +331,11 @@ fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &Stri
     };
 }
 
-impl Application for Model {
-    type Message = Message;
+impl<C: Config + std::fmt::Debug + Send + Sync + 'static> Application for Model<C>
+where
+    OpenAi: AiServiceApi<C>,
+{
+    type Message = Message<C>;
     type Theme = Theme;
     type Executor = iced::executor::Default;
     type Flags = (
@@ -331,9 +344,10 @@ impl Application for Model {
         HashMap<String, openai_api::scenario::Prompt>,
         Workflow,
         Option<usize>,
+        Option<async_openai::Client<C>>,
     );
 
-    fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
+    fn new(flags: <Model<C> as iced::Application>::Flags) -> (Model<C>, Command<Message<C>>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let mut prompt = EditArea::default();
@@ -345,7 +359,8 @@ impl Application for Model {
         // It might be good to place this in main() but it introduces a lot of
         // conditional compilation.
         #[cfg(not(azure_ai))]
-        let client = create_opeai_client(&flags.1);
+        //let client = create_opeai_client(&flags.1);
+        let client = (&flags.1).create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
         let loaded = load_data(flags.2.get(name).unwrap().clone(), tag.clone());
@@ -357,10 +372,10 @@ impl Application for Model {
             let default = EditArea::default();
             prompt.content = text_editor::Content::with_text(&i.prompt);
         }
-        let commands = vec![Command::perform(
+        let commands: Vec<Command<Message<C>>> = vec![Command::perform(
             connect(
                 flags.1.clone(),
-                client,
+                client.unwrap(),
                 flags.0.prompt_keys.clone(),
                 flags.2.clone(),
             ),
@@ -377,7 +392,7 @@ impl Application for Model {
                 workflow: flags.3,
                 auto: flags.0.auto,
             },
-            Command::batch(commands),
+            Command::<Message<C>>::batch(commands),
         )
     }
 
@@ -385,7 +400,7 @@ impl Application for Model {
         "title".to_string()
     }
 
-    fn update(&mut self, message: Message) -> Command<Message> {
+    fn update(&mut self, message: Message<C>) -> Command<Message<C>> {
         debug!("{:?}", message);
         match message {
             Message::Connected(Ok(ctx)) => {
@@ -515,7 +530,6 @@ impl Application for Model {
 
                 let mut command = Command::none();
 
-
                 match answer {
                     Ok((name, text)) => {
                         let opt_markers = self.env.get_markers();
@@ -575,7 +589,9 @@ impl Application for Model {
                     _ => error!("FAILED"),
                 }
                 if auto {
-                    self.update(Message::NextWorkflow { auto: self.auto_enabled() })
+                    self.update(Message::NextWorkflow {
+                        auto: self.auto_enabled(),
+                    })
                 } else {
                     command
                 }
@@ -596,7 +612,7 @@ impl Application for Model {
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<Message<C>> {
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
         column![
@@ -657,7 +673,7 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     items
 }
 
-fn dispatch_direction(wf: &Workflow, auto: bool, name: &str, tag: &str) -> Message {
+fn dispatch_direction<C: Config>(wf: &Workflow, auto: bool, name: &str, tag: &str) -> Message<C> {
     debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);
     let directive = wf.get_directive(name, tag);
     match directive {
@@ -689,7 +705,7 @@ impl From<reqwest::Error> for AssistantError {
     }
 }
 
-fn button<'a>(text: String, tag: String) -> widget::Button<'a, Message> {
+fn button<'a, C: Config>(text: String, tag: String) -> widget::Button<'a, Message<C>> {
     let title = text.clone() + ":" + &tag;
     Button::new(Text::new(title))
 }

@@ -1,5 +1,6 @@
+use async_openai::config::Config;
 use async_openai::{
-    config::OpenAIConfig,
+    config::{AzureConfig, OpenAIConfig},
     error::OpenAIError,
     types::{
         AssistantObject, CreateAssistantRequestArgs, CreateMessageRequestArgs,
@@ -66,19 +67,19 @@ pub struct Interaction {
 }
 
 #[derive(Clone, Debug)]
-pub struct Context {
-    client: Client<OpenAIConfig>,
+pub struct Context<C: Config> {
+    client: Client<C>,
     interactions: HashMap<String, Interaction>,
 }
 
-impl Context {
-    pub fn new(client: Client<OpenAIConfig>) -> Context {
+impl<C: Config> Context<C> {
+    pub fn new(client: Client<C>) -> Context<C> {
         Context {
             client,
             interactions: HashMap::default(),
         }
     }
-    pub fn client(self) -> Client<OpenAIConfig> {
+    pub fn client(self) -> Client<C> {
         self.client
     }
     pub fn add_interaction(&mut self, name: String, interaction: Interaction) {
@@ -98,46 +99,58 @@ impl Context {
     }
 }
 
-#[cfg(not(azure_ai))]
-pub fn create_opeai_client(config: &OpenAi) -> Client<OpenAIConfig> {
-    info!("Creating openai client");
-    match config {
-        OpenAi::OpenAiToken { token, .. } => {
-            let token = token.as_str();
-            let oai_config: OpenAIConfig = OpenAIConfig::default().with_api_key(token);
-
-            //create a client
-
-            Client::with_config(oai_config)
-        }
-        _ => Client::<OpenAIConfig>::new(),
-    }
+pub trait AiServiceApi<C: Config> {
+    fn create_client(&self) -> Option<Client<C>>;
 }
-#[cfg(azure_ai)]
-pub fn create_opeai_client(config: &OpenAi) -> Client<AzureConfig> {
-    info!("Creating azure ai client");
-    match config {
-        OpenAi::AzureAiToken { key, endpoint, .. } => {
-            let key = key.as_str();
-            let endpoint = endpoint.as_str();
-            let oai_config: AzureConfig = AzureConfig::default()
-                .with_api_key(key)
-                .with_api_base(endpoint);
 
-            //create a client
-            Client::with_config(oai_config)
+impl AiServiceApi<OpenAIConfig> for OpenAi {
+    fn create_client(&self) -> Option<Client<OpenAIConfig>> {
+        info!("Creating openai client");
+        match self {
+            OpenAi::OpenAiToken { token, .. } => {
+                let token = token.as_str();
+                let oai_config: OpenAIConfig = OpenAIConfig::default().with_api_key(token);
+
+                //create a client
+
+                Some(Client::with_config(oai_config))
+            }
+            _ => None,
         }
-        _ => Client::<AzureConfig>::new(),
     }
 }
 
-pub async fn connect(
+impl AiServiceApi<AzureConfig> for OpenAi {
+    fn create_client(&self) -> Option<Client<AzureConfig>> {
+        info!("Creating azure client");
+        match self {
+            OpenAi::AzureAiToken {
+                key,
+                endpoint,
+                deployment_id,
+                api_version,
+            } => {
+                let azure_config: AzureConfig = AzureConfig::default()
+                    .with_api_key(key)
+                    //with_endpoint(endpoint)
+                    .with_api_base(endpoint)
+                    .with_deployment_id(deployment_id)
+                    .with_api_version(api_version);
+
+                //create a client
+                Some(Client::with_config(azure_config))
+            }
+            _ => None,
+        }
+    }
+}
+pub async fn connect<C: Config>(
     config: OpenAi,
-    client: Client<OpenAIConfig>,
+    client: Client<C>,
     names: Vec<String>,
     prompts: HashMap<String, Prompt>,
-) -> Result<Context, OpenAIApiError> {
-    let mut context: Context = Context::new(client);
+) -> Result<Context<C>, OpenAIApiError> {
+    let mut context: Context<C> = Context::new(client);
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
@@ -160,9 +173,9 @@ pub async fn connect(
     }
 }
 
-async fn setup_assistant(
+async fn setup_assistant<C: Config>(
     config: &OpenAi,
-    client: &Client<OpenAIConfig>,
+    client: &Client<C>,
     name: &String,
     prompt: &String,
 ) -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
@@ -186,8 +199,8 @@ async fn setup_assistant(
     Ok((thread, assistant))
 }
 
-pub async fn ask(
-    context: Arc<Mutex<Context>>,
+pub async fn ask<C: Config>(
+    context: Arc<Mutex<Context<C>>>,
     name: String,
     input: String,
 ) -> Result<(String, String), (String, OpenAIApiError)> {

@@ -86,15 +86,15 @@ impl<C: Config> Context<C> {
         self.interactions.insert(name, interaction);
     }
 
-    pub fn add_conversation(&mut self, name: String, conversation: Conversation) {
+    pub fn add_conversation(&mut self, name: &str, conversation: Conversation) {
         self.interactions
-            .get_mut(&name)
+            .get_mut(name)
             .unwrap()
             .conversation
             .push(conversation);
     }
 
-    pub fn save_conversation(&self, name: String) {
+    pub fn save_conversation(&self, name: &str) {
         println!("Saving conversation: {:?}", &self.interactions);
     }
 }
@@ -176,8 +176,8 @@ pub async fn connect<C: Config>(
 async fn setup_assistant<C: Config>(
     config: &OpenAi,
     client: &Client<C>,
-    name: &String,
-    prompt: &String,
+    name: &str,
+    prompt: &str,
 ) -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
     //create a thread for the conversation
     let thread_request = CreateThreadRequestArgs::default().build()?;

@@ -8,7 +8,9 @@ use async_openai::Client;
 use regex::Regex;
 use std::process::Output;
 
-use iced::widget::{self, column, horizontal_space, row, text_editor, Button, Text};
+use iced::widget::{
+    self, checkbox, column, horizontal_space, row, text_editor, Button, Column, Text,
+};
 use iced::{Alignment, Application, Command, Element, Settings, Theme};
 
 use thiserror::Error;
@@ -289,7 +291,7 @@ struct LoadedData {
     prefix: Option<String>,
     input: String,
 }
-fn load_data(prompt: Prompt, tag: String) -> Option<LoadedData> {
+fn load_data(prompt: Prompt, tag: &str) -> Option<LoadedData> {
     debug!("load_data(): prompt:{:?} tag:{}", &prompt, &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
@@ -301,7 +303,7 @@ fn load_data(prompt: Prompt, tag: String) -> Option<LoadedData> {
     })
 }
 
-fn load_content(prompt: Prompt, tag: String, edit_area: &EditArea) -> Option<LoadedData> {
+fn load_content(prompt: Prompt, tag: &str, edit_area: &EditArea) -> Option<LoadedData> {
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
         (LoadedData {
@@ -323,7 +325,7 @@ fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     res
 }
 
-fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &String) {
+fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
     area[idx as usize] = EditArea {
         content: text_editor::Content::with_text(&text),
@@ -363,7 +365,7 @@ where
         let client = (&flags.1).create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-        let loaded = load_data(flags.2.get(name).unwrap().clone(), tag.clone());
+        let loaded = load_data(flags.2.get(name).unwrap().clone(), &tag);
         // Initialize EditArea with loaded input.
         if let Some(i) = loaded {
             let default = EditArea::default();
@@ -423,8 +425,7 @@ where
                     Directive::JumpTo { name, tag } => {
                         info!("JumpTo: name:{}, tag:{}", name, tag);
 
-                        let loaded =
-                            load_data(self.prompts.get(&name).unwrap().clone(), tag.clone());
+                        let loaded = load_data(self.prompts.get(&name).unwrap().clone(), &tag);
                         if let Some(i) = loaded {
                             self.current = (name.clone(), tag.clone());
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
@@ -442,7 +443,7 @@ where
                         self.current = (name.clone(), tag.clone());
                         let loaded = load_content(
                             self.prompts.get(&name).unwrap().clone(),
-                            tag.clone(),
+                            &tag,
                             &self.edit_areas[AreaIndex::Result as usize],
                         );
                         if let Some(i) = loaded {
@@ -482,7 +483,7 @@ where
                 self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let result = load_data(prompt, tag)
+                let result = load_data(prompt, &tag)
                     .map(|i| {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
@@ -506,7 +507,7 @@ where
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                     let _handle = tokio::spawn(async move {
                         let mut ctx = context.lock().await;
-                        ctx.add_conversation(name.clone(), Conversation::ToAi { message: input })
+                        ctx.add_conversation(&name, Conversation::ToAi { message: input })
                     });
 
                     Command::perform(
@@ -539,7 +540,7 @@ where
                         let _handle = tokio::spawn(async move {
                             let mut ctx = context.lock().await;
                             ctx.add_conversation(
-                                name,
+                                &name,
                                 Conversation::FromAi {
                                     message: cloned_text,
                                 },
@@ -604,7 +605,7 @@ where
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
                     let mut ctx = context.lock().await;
-                    ctx.save_conversation(outut_dir)
+                    ctx.save_conversation(&outut_dir)
                 });
                 Command::none()
             }
@@ -619,29 +620,27 @@ where
             row![
                 row(list_inputs(&self.prompts)
                     .into_iter()
-                    .map(|(name, tag)| button(name.clone(), tag.clone())
+                    .map(|(name, tag)| button(&name, &tag)
                         .on_press(Message::LoadInput { name, tag })
                         .into())),
                 row![
                     horizontal_space(iced::Length::Fill),
-                    button("Next".to_string(), "".to_string()).on_press(Message::NextWorkflow {
+                    button(&"Next", &"").on_press(Message::NextWorkflow {
                         auto: self.auto_enabled()
                     }),
-                    button("Ask AI".to_string(), "".to_string()).on_press(Message::QueryAi {
+                    button(&"Ask AI", &"").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: false,
                     }),
-                    button("auto".to_string(), "".to_string()).on_press(Message::QueryAi {
+                    button(&"auto", &"").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: true,
                     }),
-                    button("save".to_string(), "".to_string()).on_press(
-                        Message::SaveConversation {
-                            outut_dir: self.env.output_dir.clone(),
-                        }
-                    ),
+                    button(&"save", &"").on_press(Message::SaveConversation {
+                        outut_dir: self.env.output_dir.clone(),
+                    }),
                 ]
                 .align_items(Alignment::End)
                 .width(iced::Length::Fill),
@@ -705,8 +704,8 @@ impl From<reqwest::Error> for AssistantError {
     }
 }
 
-fn button<'a, C: Config>(text: String, tag: String) -> widget::Button<'a, Message<C>> {
-    let title = text.clone() + ":" + &tag;
+fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {
+    let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
 }
 

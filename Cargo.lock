@@ -580,18 +580,18 @@ dependencies = [
 
 [[package]]
 name = "clipboard_wayland"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8134163bd07c47ae3cc29babc42c255fdb315facc790950ae2d0e561ea6f2ec0"
+checksum = "003f886bc4e2987729d10c1db3424e7f80809f3fc22dbc16c685738887cb37b8"
 dependencies = [
  "smithay-clipboard",
 ]
 
 [[package]]
 name = "clipboard_x11"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cf45b436634fee64c6d3981639b46a87eeea3c64e422643273fcefd1baef56c"
+checksum = "4274ea815e013e0f9f04a2633423e14194e408a0576c943ce3d14ca56c50031c"
 dependencies = [
  "thiserror",
  "x11rb",
@@ -1411,9 +1411,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.24.2"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5418c17512bdf42730f9032c74e1ae39afc408745ebb2acf72fbc4691c17945"
+checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
 
 [[package]]
 name = "glib-sys"
@@ -1738,7 +1738,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1752,9 +1752,10 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.4.2",
+ "glam",
  "log",
  "num-traits",
  "palette",
@@ -1768,7 +1769,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "futures",
  "iced_core",
@@ -1781,12 +1782,11 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.4.2",
  "bytemuck",
  "cosmic-text",
- "glam",
  "half",
  "iced_core",
  "iced_futures",
@@ -1804,7 +1804,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1816,17 +1816,18 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_core",
  "iced_futures",
+ "raw-window-handle 0.6.0",
  "thiserror",
 ]
 
 [[package]]
 name = "iced_style"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_core",
  "once_cell",
@@ -1836,7 +1837,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -1852,9 +1853,9 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.4.2",
  "bytemuck",
  "futures",
  "glam",
@@ -1869,7 +1870,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_renderer",
  "iced_runtime",
@@ -1882,7 +1883,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.12.0"
-source = "git+https://github.com/ywata/iced#b3e3f6e3c9fc6879e6681810f54d7eaa7c0f3d30"
+source = "git+https://github.com/ywata/iced?rev=c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a#c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -2052,11 +2053,12 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kurbo"
-version = "0.9.5"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd85a5776cd9500c2e2059c8c76c3b01528566b7fcbaf8098b55a33fc298849b"
+checksum = "1618d4ebd923e97d67e7cd363d80aef35fe961005cbbbb3d2dad8bdd1bc63440"
 dependencies = [
  "arrayvec",
+ "smallvec",
 ]
 
 [[package]]
@@ -4486,9 +4488,9 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "window_clipboard"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6a197337269a469b5b2583d65dd7dfe475fd79a525be0aa647ff6d37ac6612c"
+checksum = "f6d692d46038c433f9daee7ad8757e002a4248c20b0a3fbc991d99521d3bcb6d"
 dependencies = [
  "clipboard-win",
  "clipboard_macos",

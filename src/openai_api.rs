@@ -43,7 +43,6 @@ impl OpenAi {
     }
 }
 
-
 impl Default for OpenAi {
     fn default() -> Self {
         OpenAi::OpenAiToken {
@@ -59,7 +58,6 @@ pub struct Assistant {
     thread: ThreadObject,
     assistant: AssistantObject,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct Context<C: Config> {
@@ -124,7 +122,6 @@ impl AiServiceApi<AzureConfig> for OpenAi {
         }
     }
 }
-
 
 pub async fn connect<C: Config>(
     config: OpenAi,

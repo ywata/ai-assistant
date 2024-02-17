@@ -115,10 +115,9 @@ pub fn main() -> Result<(), AssistantError> {
     let _given_keys = parse_cli_settings(&prompt_hash, &args.prompt_keys, &args.tag)
         .ok_or(AssistantError::AppAccessError)?;
 
-
-
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
-        #[cfg(not(feature = "azure_ai"))] {
+        #[cfg(not(feature = "azure_ai"))]
+        {
             let client: Option<Client<OpenAIConfig>> = config.create_client();
             let settings_default = Settings {
                 flags: (args.clone(), config, prompts, workflow, args.auto, client),
@@ -127,7 +126,8 @@ pub fn main() -> Result<(), AssistantError> {
 
             Ok(Model::<OpenAIConfig, Content>::run(settings_default)?)
         }
-        #[cfg(feature = "azure_ai")] {
+        #[cfg(feature = "azure_ai")]
+        {
             let client: Option<Client<AzureConfig>> = config.create_client();
             let settings_default = Settings {
                 flags: (args.clone(), config, prompts, workflow, args.auto, client),
@@ -135,7 +135,6 @@ pub fn main() -> Result<(), AssistantError> {
             };
 
             Ok(Model::<AzureConfig, Content>::run(settings_default)?)
-
         }
     } else {
         Err(AssistantError::AppAccessError)
@@ -209,11 +208,10 @@ enum Content {
 
 #[derive(Debug, Clone)]
 enum Talk<M: Clone + std::fmt::Debug> {
-    Shown {name:AssistantName, message: M},
-    ToAi {name:AssistantName, message: M},
-    FromAi {name:AssistantName, message: M},
+    Shown { name: AssistantName, message: M },
+    ToAi { name: AssistantName, message: M },
+    FromAi { name: AssistantName, message: M },
 }
-
 
 #[derive(Debug)]
 struct Model<C: Config, M: Clone + std::fmt::Debug> {
@@ -231,7 +229,7 @@ struct Model<C: Config, M: Clone + std::fmt::Debug> {
     auto: Option<usize>,
 }
 
-impl<C: Config, M: std::clone::Clone + std::fmt::Debug> Model<C,  M> {
+impl<C: Config, M: std::clone::Clone + std::fmt::Debug> Model<C, M> {
     fn dec_auto(&mut self) {
         if let Some(auto) = self.auto {
             if auto > 0 {
@@ -317,24 +315,28 @@ struct LoadedData {
 fn load_data(prompt: Prompt, tag: &str) -> Option<LoadedData> {
     debug!("load_data(): prompt:{:?} tag:{}", &prompt, &tag);
 
-    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        LoadedData {
+    prompt
+        .inputs
+        .iter()
+        .find(|i| i.tag == tag)
+        .map(|i| LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
             input: i.text.clone(),
-        }
-    })
+        })
 }
 
 fn load_content(prompt: Prompt, tag: &str, edit_area: &EditArea) -> Option<LoadedData> {
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
-    prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        LoadedData {
+    prompt
+        .inputs
+        .iter()
+        .find(|i| i.tag == tag)
+        .map(|i| LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
             input: edit_area.content.text().clone(),
-        }
-    })
+        })
 }
 
 fn get_content(contents: Vec<Mark>) -> Option<Mark> {
@@ -358,7 +360,8 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
 
 impl<C: Config + std::fmt::Debug + Send + Sync + 'static, M> Application for Model<C, M>
 where
-    OpenAi: AiServiceApi<C>, M: std::clone::Clone + std::fmt::Debug
+    OpenAi: AiServiceApi<C>,
+    M: std::clone::Clone + std::fmt::Debug,
 {
     type Message = Message<C>;
     type Theme = Theme;
@@ -610,9 +613,7 @@ where
                 debug!("{:?}", msg);
                 Command::none()
             }
-            Message::Toggled(_) => {
-                Command::none()
-            }
+            Message::Toggled(_) => Command::none(),
             Message::SaveConversation { outut_dir } => {
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
@@ -683,7 +684,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     items
 }
 
-
 #[derive(Clone, Debug, Deserialize)]
 struct Response {
     missing: Vec<String>,
@@ -698,26 +698,23 @@ impl From<reqwest::Error> for AssistantError {
     }
 }
 
-
 fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {
     let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
 }
 
-fn to_checkboxes<'a, C: Config + 'a>(resp: HashMap<String, Vec<String>>) -> iced::widget::Column<'a, Message<C>> {
+fn to_checkboxes<'a, C: Config + 'a>(
+    resp: HashMap<String, Vec<String>>,
+) -> iced::widget::Column<'a, Message<C>> {
     let mut col = Column::new();
     for (k, v) in resp {
         for i in v {
-            let cb = checkbox("default", false)
-                .on_toggle(Message::Toggled);
+            let cb = checkbox("default", false).on_toggle(Message::Toggled);
             col = col.push(cb)
         }
     }
     col
 }
-
-
-
 
 #[derive(Clone, Debug, PartialEq)]
 enum Mark {

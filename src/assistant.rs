@@ -1,3 +1,4 @@
+use openai_api::AssistantName;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -114,22 +115,28 @@ pub fn main() -> Result<(), AssistantError> {
     let _given_keys = parse_cli_settings(&prompt_hash, &args.prompt_keys, &args.tag)
         .ok_or(AssistantError::AppAccessError)?;
 
+
+
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
-        #[cfg(not(feature = "azure_ai"))]
-        let client: Option<Client<OpenAIConfig>> = config.create_client();
-        #[cfg(feature = "azure_ai")]
-        let client: Option<Client<AzureConfig>> = config.create_client();
+        #[cfg(not(feature = "azure_ai"))] {
+            let client: Option<Client<OpenAIConfig>> = config.create_client();
+            let settings_default = Settings {
+                flags: (args.clone(), config, prompts, workflow, args.auto, client),
+                ..Default::default()
+            };
 
-        let settings_default = Settings {
-            flags: (args.clone(), config, prompts, workflow, args.auto, client),
-            ..Default::default()
-        };
-        //let updated_settings = Settings {
-        //    flags: (args.clone(), config, prompts, workflow, args.auto, client),
-        //    ..settings
-        //};
+            Ok(Model::<OpenAIConfig, Content>::run(settings_default)?)
+        }
+        #[cfg(feature = "azure_ai")] {
+            let client: Option<Client<AzureConfig>> = config.create_client();
+            let settings_default = Settings {
+                flags: (args.clone(), config, prompts, workflow, args.auto, client),
+                ..Default::default()
+            };
 
-        Ok(Model::run(settings_default)?)
+            Ok(Model::<AzureConfig, Content>::run(settings_default)?)
+
+        }
     } else {
         Err(AssistantError::AppAccessError)
     }
@@ -193,11 +200,27 @@ enum AreaIndex {
     Result = 2,
 }
 
+#[derive(Clone, Debug)]
+enum Content {
+    Text(String),
+    Json(String),
+    Fsharp(String),
+}
+
+#[derive(Debug, Clone)]
+enum Talk<M: Clone + std::fmt::Debug> {
+    Shown {name:AssistantName, message: M},
+    ToAi {name:AssistantName, message: M},
+    FromAi {name:AssistantName, message: M},
+}
+
+
 #[derive(Debug)]
-struct Model<C: Config> {
+struct Model<C: Config, M: Clone + std::fmt::Debug> {
     env: Cli,
     prompts: HashMap<String, openai_api::scenario::Prompt>,
     context: Option<Arc<Mutex<Context<C>>>>,
+    conversations: Vec<Talk<M>>,
     // edit_area contaiins current view of conversation,
     // Prompt is set up on Thread creation time and it is not changed.
     // Input edit_area will be used for querying to AI.
@@ -208,7 +231,7 @@ struct Model<C: Config> {
     auto: Option<usize>,
 }
 
-impl<C: Config> Model<C> {
+impl<C: Config, M: std::clone::Clone + std::fmt::Debug> Model<C,  M> {
     fn dec_auto(&mut self) {
         if let Some(auto) = self.auto {
             if auto > 0 {
@@ -333,9 +356,9 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl<C: Config + std::fmt::Debug + Send + Sync + 'static> Application for Model<C>
+impl<C: Config + std::fmt::Debug + Send + Sync + 'static, M> Application for Model<C, M>
 where
-    OpenAi: AiServiceApi<C>,
+    OpenAi: AiServiceApi<C>, M: std::clone::Clone + std::fmt::Debug
 {
     type Message = Message<C>;
     type Theme = Theme;
@@ -349,7 +372,7 @@ where
         Option<async_openai::Client<C>>,
     );
 
-    fn new(flags: <Model<C> as iced::Application>::Flags) -> (Model<C>, Command<Message<C>>) {
+    fn new(flags: <Model<C, M> as iced::Application>::Flags) -> (Model<C, M>, Command<Message<C>>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let mut prompt = EditArea::default();
@@ -391,6 +414,7 @@ where
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
                 auto: flags.0.auto,
+                conversations: Vec::new(),
             },
             Command::<Message<C>>::batch(commands),
         )
@@ -673,8 +697,6 @@ impl From<reqwest::Error> for AssistantError {
         AssistantError::APIError
     }
 }
-
-
 
 
 fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {

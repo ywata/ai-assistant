@@ -53,12 +53,13 @@ impl Default for OpenAi {
     }
 }
 
-type AssistantName = String;
+pub type AssistantName = String;
 #[derive(Clone, Debug)]
 pub struct Assistant {
     thread: ThreadObject,
     assistant: AssistantObject,
 }
+
 
 #[derive(Clone, Debug)]
 pub struct Context<C: Config> {
@@ -76,7 +77,6 @@ impl<C: Config> Context<C> {
     pub fn client(self) -> Client<C> {
         self.client
     }
-
 }
 
 pub trait AiServiceApi<C: Config> {
@@ -124,6 +124,8 @@ impl AiServiceApi<AzureConfig> for OpenAi {
         }
     }
 }
+
+
 pub async fn connect<C: Config>(
     config: OpenAi,
     client: Client<C>,

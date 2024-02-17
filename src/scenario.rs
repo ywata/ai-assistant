@@ -113,7 +113,7 @@ pub fn parse_cli_settings<'a>(
         return None;
     }
 
-    let mut input_specifiers = list_input_specifiers(prompts);
+    let input_specifiers = list_input_specifiers(prompts);
     for key in keys.iter() {
         if !prompts.keys().any(|x| x == key) {
             error!("({},{}) is not in {:?}", tag, key, input_specifiers);

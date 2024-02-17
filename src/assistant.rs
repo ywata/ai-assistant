@@ -16,7 +16,6 @@ use iced::{Alignment, Application, Command, Element, Settings, Theme};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
-use iced::widget::text_editor::Edit;
 use log::{debug, error, info, trace};
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -295,22 +294,22 @@ fn load_data(prompt: Prompt, tag: &str) -> Option<LoadedData> {
     debug!("load_data(): prompt:{:?} tag:{}", &prompt, &tag);
 
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        (LoadedData {
+        LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
             input: i.text.clone(),
-        })
+        }
     })
 }
 
 fn load_content(prompt: Prompt, tag: &str, edit_area: &EditArea) -> Option<LoadedData> {
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
     prompt.inputs.iter().find(|i| i.tag == tag).map(|i| {
-        (LoadedData {
+        LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
             input: edit_area.content.text().clone(),
-        })
+        }
     })
 }
 
@@ -325,7 +324,7 @@ fn get_content(contents: Vec<Mark>) -> Option<Mark> {
     res
 }
 
-fn set_editor_contents(mut area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
+fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
     area[idx as usize] = EditArea {
         content: text_editor::Content::with_text(&text),
@@ -368,10 +367,8 @@ where
         let loaded = load_data(flags.2.get(name).unwrap().clone(), &tag);
         // Initialize EditArea with loaded input.
         if let Some(i) = loaded {
-            let default = EditArea::default();
             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
             input.content = text_editor::Content::with_text(&prefixed_text);
-            let default = EditArea::default();
             prompt.content = text_editor::Content::with_text(&i.prompt);
         }
         let commands: Vec<Command<Message<C>>> = vec![Command::perform(
@@ -604,7 +601,7 @@ where
             Message::SaveConversation { outut_dir } => {
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
-                    let mut ctx = context.lock().await;
+                    let ctx = context.lock().await;
                     ctx.save_conversation(&outut_dir)
                 });
                 Command::none()
@@ -672,23 +669,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     items
 }
 
-fn dispatch_direction<C: Config>(wf: &Workflow, auto: bool, name: &str, tag: &str) -> Message<C> {
-    debug!("load_message: wf:{:?} name:{}, tag:{}", wf, name, tag);
-    let directive = wf.get_directive(name, tag);
-    match directive {
-        Directive::KeepAsIs => Message::DoNothing,
-        Directive::JumpTo { name, tag } => Message::LoadInput {
-            name: name.to_string(),
-            tag: tag.to_string(),
-        },
-        Directive::PassResultTo { name, tag } => Message::LoadInput {
-            name: name.to_string(),
-            tag: tag.to_string(),
-            //auto: auto,
-        },
-        Directive::Stop => Message::DoNothing,
-    }
-}
 
 #[derive(Clone, Debug, Deserialize)]
 struct Response {
@@ -704,10 +684,16 @@ impl From<reqwest::Error> for AssistantError {
     }
 }
 
+
+
+
 fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {
     let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
 }
+
+
+
 
 #[derive(Clone, Debug, PartialEq)]
 enum Mark {

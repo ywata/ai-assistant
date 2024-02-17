@@ -55,7 +55,6 @@ impl Default for OpenAi {
 
 #[derive(Clone, Debug)]
 pub struct Assistant {
-    name: String,
     thread: ThreadObject,
     assistant: AssistantObject,
 }

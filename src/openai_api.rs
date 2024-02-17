@@ -53,6 +53,7 @@ impl Default for OpenAi {
     }
 }
 
+type AssistantName = String;
 #[derive(Clone, Debug)]
 pub struct Assistant {
     thread: ThreadObject,
@@ -62,7 +63,7 @@ pub struct Assistant {
 #[derive(Clone, Debug)]
 pub struct Context<C: Config> {
     client: Client<C>,
-    assistants: HashMap<String, Assistant>,
+    assistants: HashMap<AssistantName, Assistant>,
 }
 
 impl<C: Config> Context<C> {

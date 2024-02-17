@@ -163,6 +163,7 @@ enum Message<C: Config> {
     SaveConversation {
         outut_dir: String,
     },
+    Toggled(bool),
     DoNothing,
 }
 
@@ -598,6 +599,9 @@ where
                 debug!("{:?}", msg);
                 Command::none()
             }
+            Message::Toggled(_) => {
+                Command::none()
+            }
             Message::SaveConversation { outut_dir } => {
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
@@ -621,7 +625,7 @@ where
                         .on_press(Message::LoadInput { name, tag })
                         .into())),
                 row![
-                    horizontal_space(iced::Length::Fill),
+                    horizontal_space(),
                     button(&"Next", &"").on_press(Message::NextWorkflow {
                         auto: self.auto_enabled()
                     }),
@@ -690,6 +694,18 @@ impl From<reqwest::Error> for AssistantError {
 fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {
     let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
+}
+
+fn to_checkboxes<'a, C: Config + 'a>(resp: HashMap<String, Vec<String>>) -> iced::widget::Column<'a, Message<C>> {
+    let mut col = Column::new();
+    for (k, v) in resp {
+        for i in v {
+            let cb = checkbox("default", false)
+                .on_toggle(Message::Toggled);
+            col = col.push(cb)
+        }
+    }
+    col
 }
 
 

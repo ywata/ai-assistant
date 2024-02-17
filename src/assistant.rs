@@ -593,7 +593,6 @@ where
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
                     let ctx = context.lock().await;
-                    ctx.save_conversation(&outut_dir)
                 });
                 Command::none()
             }

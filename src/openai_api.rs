@@ -63,26 +63,20 @@ pub struct Interaction {
 #[derive(Clone, Debug)]
 pub struct Context<C: Config> {
     client: Client<C>,
-    interactions: HashMap<String, Interaction>,
+    assistants: HashMap<String, Interaction>,
 }
 
 impl<C: Config> Context<C> {
     pub fn new(client: Client<C>) -> Context<C> {
         Context {
             client,
-            interactions: HashMap::default(),
+            assistants: HashMap::new(),
         }
     }
     pub fn client(self) -> Client<C> {
         self.client
     }
-    pub fn add_interaction(&mut self, name: String, interaction: Interaction) {
-        self.interactions.insert(name, interaction);
-    }
 
-    pub fn save_conversation(&self, name: &str) {
-        println!("Saving conversation: {:?}", &self.interactions);
-    }
 }
 
 pub trait AiServiceApi<C: Config> {
@@ -189,7 +183,7 @@ pub async fn ask<C: Config>(
     let ctx = context.lock().await;
     let client = ctx.client.clone();
 
-    if let Some(interaction) = ctx.interactions.get(&name) {
+    if let Some(interaction) = ctx.assistants.get(&name) {
         let assistant_id = interaction.assistant.id.clone();
         let thread_id = interaction.thread.id.clone();
 

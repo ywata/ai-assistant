@@ -43,11 +43,6 @@ impl OpenAi {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum Conversation {
-    ToAi { message: String },
-    FromAi { message: String },
-}
 
 impl Default for OpenAi {
     fn default() -> Self {
@@ -63,7 +58,6 @@ pub struct Interaction {
     name: String,
     thread: ThreadObject,
     assistant: AssistantObject,
-    conversation: Vec<Conversation>,
 }
 
 #[derive(Clone, Debug)]
@@ -84,14 +78,6 @@ impl<C: Config> Context<C> {
     }
     pub fn add_interaction(&mut self, name: String, interaction: Interaction) {
         self.interactions.insert(name, interaction);
-    }
-
-    pub fn add_conversation(&mut self, name: &str, conversation: Conversation) {
-        self.interactions
-            .get_mut(name)
-            .unwrap()
-            .conversation
-            .push(conversation);
     }
 
     pub fn save_conversation(&self, name: &str) {
@@ -156,13 +142,6 @@ pub async fn connect<C: Config>(
         if let Some(prompt) = prompts.get(&key) {
             let (thread, assistant) =
                 setup_assistant(&config, &context.client, &key, &prompt.instruction).await?;
-            let interaction = Interaction {
-                name: key.clone(),
-                thread,
-                assistant,
-                conversation: Vec::default(),
-            };
-            context.add_interaction(key, interaction);
             connection_setupped = true;
         }
     }

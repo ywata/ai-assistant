@@ -20,7 +20,7 @@ use log::{debug, error, info, trace};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use openai_api::{connect, AiServiceApi, Context, Conversation, OpenAIApiError, OpenAi};
+use openai_api::{connect, AiServiceApi, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
@@ -503,10 +503,6 @@ where
                     let pass_context = context.clone();
                     let pass_name = name.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                    let _handle = tokio::spawn(async move {
-                        let mut ctx = context.lock().await;
-                        ctx.add_conversation(&name, Conversation::ToAi { message: input })
-                    });
 
                     Command::perform(
                         openai_api::ask(
@@ -535,15 +531,6 @@ where
                         let mut content = text_editor::Content::with_text("");
                         let context = self.context.clone().unwrap();
                         let cloned_text = text.clone();
-                        let _handle = tokio::spawn(async move {
-                            let mut ctx = context.lock().await;
-                            ctx.add_conversation(
-                                &name,
-                                Conversation::FromAi {
-                                    message: cloned_text,
-                                },
-                            )
-                        });
 
                         if let Ok(markers) = opt_markers {
                             let contents = split_code(&text, &markers.clone()).clone();

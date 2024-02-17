@@ -54,7 +54,7 @@ impl Default for OpenAi {
 }
 
 #[derive(Clone, Debug)]
-pub struct Interaction {
+pub struct Assistant {
     name: String,
     thread: ThreadObject,
     assistant: AssistantObject,
@@ -63,7 +63,7 @@ pub struct Interaction {
 #[derive(Clone, Debug)]
 pub struct Context<C: Config> {
     client: Client<C>,
-    assistants: HashMap<String, Interaction>,
+    assistants: HashMap<String, Assistant>,
 }
 
 impl<C: Config> Context<C> {

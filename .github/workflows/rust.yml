@@ -40,7 +40,9 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - uses: actions/checkout@v3
-    - name: Build
+    - name: Build for OpenAI
       run: cargo build --verbose
+    - name: Build for Azure
+      run: cargo build --verbose --feature azure_ai
     - name: Run tests
       run: cargo test --verbose

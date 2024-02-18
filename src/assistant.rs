@@ -1,10 +1,10 @@
 use log::warn;
 use openai_api::AssistantName;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
-use std::fmt::Debug;
 
 use async_openai::config::{AzureConfig, Config, OpenAIConfig};
 use async_openai::Client;
@@ -26,8 +26,8 @@ use tokio::sync::Mutex;
 use openai_api::{connect, AiServiceApi, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
 use crate::config::convert;
+use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
 
 //use thiserror::Error;
 mod compile;
@@ -221,29 +221,40 @@ impl Content {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Talk {
-    InputShown { name: AssistantName, message: Content },
-    ToAi { name: AssistantName, message: Content },
-    FromAi { name: AssistantName, message: Content },
-    ResponseShown { name: AssistantName, message: Content},
-
+    InputShown {
+        name: AssistantName,
+        message: Content,
+    },
+    ToAi {
+        name: AssistantName,
+        message: Content,
+    },
+    FromAi {
+        name: AssistantName,
+        message: Content,
+    },
+    ResponseShown {
+        name: AssistantName,
+        message: Content,
+    },
 }
 
 impl Talk {
-    fn get_message(&self) -> Content{
+    fn get_message(&self) -> Content {
         let n = match self {
-            Talk::InputShown {message,..} => message,
-            Talk::ToAi {message, ..} => message,
-            Talk::FromAi {message, ..} => message,
-            Talk::ResponseShown {message, ..} => message,
+            Talk::InputShown { message, .. } => message,
+            Talk::ToAi { message, .. } => message,
+            Talk::FromAi { message, .. } => message,
+            Talk::ResponseShown { message, .. } => message,
         };
         n.clone()
     }
-    fn get_name(&self) -> AssistantName{
+    fn get_name(&self) -> AssistantName {
         let n = match self {
-            Talk::InputShown {name,..} => name,
-            Talk::ToAi {name, ..} => name,
-            Talk::FromAi {name, ..} => name,
-            Talk::ResponseShown {name, ..} => name,
+            Talk::InputShown { name, .. } => name,
+            Talk::ToAi { name, .. } => name,
+            Talk::FromAi { name, .. } => name,
+            Talk::ResponseShown { name, .. } => name,
         };
         n.clone()
     }
@@ -282,10 +293,10 @@ impl<C: Config> Model<C> {
         }
         return false;
     }
-    fn put_talk(&mut self, talk:Talk) {
+    fn put_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
     }
-    fn get_last_assistant_name(&self) -> Option<AssistantName>{
+    fn get_last_assistant_name(&self) -> Option<AssistantName> {
         if self.conversations.is_empty() {
             None
         } else {
@@ -296,10 +307,10 @@ impl<C: Config> Model<C> {
     fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
         for talk in self.conversations.iter().rev() {
             let talk_ = match talk {
-                Talk::InputShown {name, message} => cnstr(name.to_string(), message.clone()),
-                Talk::ToAi {name, message} => cnstr(name.to_string(), message.clone()),
-                Talk::ResponseShown {name, message} => cnstr(name.to_string(), message.clone()),
-                Talk::FromAi {name, message} => cnstr(name.to_string(), message.clone()),
+                Talk::InputShown { name, message } => cnstr(name.to_string(), message.clone()),
+                Talk::ToAi { name, message } => cnstr(name.to_string(), message.clone()),
+                Talk::ResponseShown { name, message } => cnstr(name.to_string(), message.clone()),
+                Talk::FromAi { name, message } => cnstr(name.to_string(), message.clone()),
             };
             if *talk == talk_ {
                 return Some(talk.clone());
@@ -373,8 +384,8 @@ struct LoadedData {
     prefix: Option<String>,
     input: String,
 }
-fn load_data(prompt: Prompt, tag: &str) -> Option<LoadedData> {
-    debug!("load_data(): prompt:{:?} tag:{}", &prompt, &tag);
+fn load_data_from_prompt(prompt: Prompt, tag: &str) -> Option<LoadedData> {
+    debug!("load_data_from_prompt(): prompt:{:?} tag:{}", &prompt, &tag);
 
     prompt
         .inputs
@@ -387,7 +398,7 @@ fn load_data(prompt: Prompt, tag: &str) -> Option<LoadedData> {
         })
 }
 
-fn load_content(prompt: Prompt, tag: &str, edit_area: &EditArea) -> Option<LoadedData> {
+fn load_content(prompt: Prompt, tag: &str, text: &str) -> Option<LoadedData> {
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
     prompt
         .inputs
@@ -396,7 +407,7 @@ fn load_content(prompt: Prompt, tag: &str, edit_area: &EditArea) -> Option<Loade
         .map(|i| LoadedData {
             prompt: prompt.instruction.clone(),
             prefix: i.prefix.clone(),
-            input: edit_area.content.text().clone(),
+            input: text.to_string(),
         })
 }
 
@@ -451,7 +462,7 @@ where
         let client = (&flags.1).create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-        let loaded = load_data(flags.2.get(name).unwrap().clone(), &tag);
+        let loaded = load_data_from_prompt(flags.2.get(name).unwrap().clone(), &tag);
         // Initialize EditArea with loaded input.
         let mut prefixed_text = String::from("");
         if let Some(i) = loaded {
@@ -478,7 +489,7 @@ where
                 auto: flags.0.auto,
                 conversations: vec![Talk::InputShown {
                     name: name.clone(),
-                    message: Content::Text(prefixed_text)
+                    message: Content::Text(prefixed_text),
                 }],
             },
             Command::<Message<C>>::batch(commands),
@@ -502,10 +513,9 @@ where
 
             Message::NextWorkflow { auto } => {
                 let wf = &self.workflow;
-                let name = self.current.0.clone();
-                let tag = self.current.1.clone();
+                let (name, tag) = &self.current.clone();
                 let mut do_next = false;
-                info!("current: name:{}, tag:{}", &name, &tag);
+                info!("current: name:{}, tag:{}", name, tag);
                 let _ = match wf.get_directive(&name, &tag) {
                     Directive::KeepAsIs => (),
                     Directive::Stop => (),
@@ -513,7 +523,8 @@ where
                     Directive::JumpTo { name, tag } => {
                         info!("JumpTo: name:{}, tag:{}", name, tag);
 
-                        let loaded = load_data(self.prompts.get(&name).unwrap().clone(), &tag);
+                        let loaded =
+                            load_data_from_prompt(self.prompts.get(&name).unwrap().clone(), &tag);
                         if let Some(i) = loaded {
                             self.current = (name.clone(), tag.clone());
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
@@ -526,7 +537,10 @@ where
                         let loaded = load_content(
                             self.prompts.get(&name).unwrap().clone(),
                             &tag,
-                            &self.edit_areas[AreaIndex::Result as usize],
+                            &self
+                                .get_talk(|name, message| Talk::ResponseShown { name, message })
+                                .map(|t| t.get_message().get_text())
+                                .unwrap_or("".to_string()),
                         );
                         if let Some(i) = loaded {
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
@@ -539,11 +553,7 @@ where
                     let pass_context = self.context.clone().unwrap();
                     let pass_name = name.clone();
                     Command::perform(
-                        openai_api::ask(
-                            pass_context,
-                            pass_name,
-                            "".to_string(),
-                        ),
+                        openai_api::ask(pass_context, pass_name, "".to_string()),
                         move |answer| Message::Answered {
                             answer,
                             auto: auto.clone(),
@@ -559,12 +569,15 @@ where
                 self.current = (name.clone(), tag.clone());
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let result = load_data(prompt, &tag)
+                let result = load_data_from_prompt(prompt, &tag)
                     .map(|i| {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
                         let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-                        self.put_talk(Talk::InputShown{name, message: Content::Text(prefixed_text)});
+                        self.put_talk(Talk::InputShown {
+                            name,
+                            message: Content::Text(prefixed_text),
+                        });
                     })
                     .ok_or(());
                 Command::none()
@@ -578,14 +591,13 @@ where
                     let pass_context = context.clone();
                     let pass_name = name.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                    self.put_talk(Talk::ToAi{name, message: Content::Text(input.clone())});
+                    self.put_talk(Talk::ToAi {
+                        name,
+                        message: Content::Text(input.clone()),
+                    });
 
                     Command::perform(
-                        openai_api::ask(
-                            pass_context,
-                            pass_name,
-                            input,
-                        ),
+                        openai_api::ask(pass_context, pass_name, input),
                         move |answer| Message::Answered {
                             answer,
                             auto: auto.clone(),
@@ -603,18 +615,25 @@ where
 
                 match answer {
                     Ok((name, text)) => {
-                        self.put_talk( Talk::FromAi {name: name.clone(), message: Content::Text(text.clone())});
+                        self.put_talk(Talk::FromAi {
+                            name: name.clone(),
+                            message: Content::Text(text.clone()),
+                        });
 
                         let opt_markers = self.env.get_markers();
                         let mut resp_content = Content::Text(text.clone());
                         if let Ok(markers) = opt_markers {
                             let contents = split_code(&text, &markers.clone()).clone();
-                            resp_content = extract_content(self, contents).unwrap_or(Content::Text(text));
+                            resp_content =
+                                extract_content(self, contents).unwrap_or(Content::Text(text));
                         } else {
                             trace!("No: markers");
                             resp_content = Content::Text(text);
                         }
-                        self.put_talk(Talk::ResponseShown {name, message: resp_content})
+                        self.put_talk(Talk::ResponseShown {
+                            name,
+                            message: resp_content,
+                        })
                     }
                     _ => error!("FAILED"),
                 }
@@ -644,12 +663,14 @@ where
         let (name, tag) = &self.current;
         debug!("{:?}", &self.conversations);
         debug!("current: {:?}", &self.current);
-        let input = self.get_talk(|name, message| Talk::InputShown {name, message})
+        let input = self
+            .get_talk(|name, message| Talk::InputShown { name, message })
             .map(|t| t.get_message().get_text())
             .unwrap_or("".to_string());
         debug!("input: {:?}", &input);
         set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &input);
-        let answer = self.get_talk(|name, message| Talk::ResponseShown {name, message})
+        let answer = self
+            .get_talk(|name, message| Talk::ResponseShown { name, message })
             .map(|t| t.get_message().get_text())
             .unwrap_or("".to_string());
         debug!("answer: {:?}", &answer);
@@ -657,7 +678,6 @@ where
 
         command
     }
-
 
     fn view(&self) -> Element<Message<C>> {
         let vec = &self.edit_areas;
@@ -694,34 +714,26 @@ where
             ],
             row![
                 column![
-                    /*                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
-                                       .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
-                    */
-                    text_editor(
-                        &vec.get(AreaIndex::Input as usize).unwrap().content
-                    ).on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
+                    text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
+                        .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
                 ],
-                column![
-                   // text_editor(&answer_content)
-                    text_editor(
-                        &vec.get(AreaIndex::Result as usize).unwrap().content
-                    )
-                ],
+                column![text_editor(
+                    &vec.get(AreaIndex::Result as usize).unwrap().content
+                )],
             ],
         ]
         .into()
     }
 }
 
-
-fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>)
-    -> Option<Content>  {
+fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>) -> Option<Content> {
     let json = String::from("json");
     let fsharp = String::from("fsharp");
     if let Some(Mark::Content {
-                    text,
-                    lang: Some(matcher),
-                }) = get_content(contents.clone()) {
+        text,
+        lang: Some(matcher),
+    }) = get_content(contents.clone())
+    {
         if matcher == json {
             let response = serde_json::from_str::<Response>(&text);
             if let Ok(_resp) = response {
@@ -738,7 +750,6 @@ fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>)
         warn!("No splitted contents: {:?}", &contents);
         return None;
     }
-
 }
 
 fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {

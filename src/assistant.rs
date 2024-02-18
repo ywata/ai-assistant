@@ -120,25 +120,15 @@ pub fn main() -> Result<(), AssistantError> {
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         #[cfg(not(feature = "azure_ai"))]
-        {
-            let client: Option<Client<OpenAIConfig>> = config.create_client();
-            let settings_default = Settings {
-                flags: (args.clone(), config, prompts, workflow, args.auto, client),
-                ..Default::default()
-            };
-
-            Ok(Model::<OpenAIConfig>::run(settings_default)?)
-        }
+        let client: Option<Client<OpenAIConfig>> = config.create_client();
         #[cfg(feature = "azure_ai")]
-        {
-            let client: Option<Client<AzureConfig>> = config.create_client();
-            let settings_default = Settings {
-                flags: (args.clone(), config, prompts, workflow, args.auto, client),
-                ..Default::default()
-            };
+        let client: Option<Client<AzureConfig>> = config.create_client();
+        let settings_default = Settings {
+            flags: (args.clone(), config, prompts, workflow, args.auto, client),
+            ..Default::default()
+        };
 
-            Ok(Model::<AzureConfig>::run(settings_default)?)
-        }
+        Ok(Model::run(settings_default)?)
     } else {
         Err(AssistantError::AppAccessError)
     }

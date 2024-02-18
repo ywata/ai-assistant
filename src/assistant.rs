@@ -1,8 +1,10 @@
+use log::warn;
 use openai_api::AssistantName;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
+use std::fmt::Debug;
 
 use async_openai::config::{AzureConfig, Config, OpenAIConfig};
 use async_openai::Client;
@@ -25,6 +27,7 @@ use openai_api::{connect, AiServiceApi, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
+use crate::config::convert;
 
 //use thiserror::Error;
 mod compile;
@@ -124,7 +127,7 @@ pub fn main() -> Result<(), AssistantError> {
                 ..Default::default()
             };
 
-            Ok(Model::<OpenAIConfig, Content>::run(settings_default)?)
+            Ok(Model::<OpenAIConfig>::run(settings_default)?)
         }
         #[cfg(feature = "azure_ai")]
         {
@@ -134,7 +137,7 @@ pub fn main() -> Result<(), AssistantError> {
                 ..Default::default()
             };
 
-            Ok(Model::<AzureConfig, Content>::run(settings_default)?)
+            Ok(Model::<AzureConfig>::run(settings_default)?)
         }
     } else {
         Err(AssistantError::AppAccessError)
@@ -199,26 +202,59 @@ enum AreaIndex {
     Result = 2,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum Content {
     Text(String),
     Json(String),
     Fsharp(String),
 }
 
-#[derive(Debug, Clone)]
-enum Talk<M: Clone + std::fmt::Debug> {
-    Shown { name: AssistantName, message: M },
-    ToAi { name: AssistantName, message: M },
-    FromAi { name: AssistantName, message: M },
+impl Content {
+    fn get_text(&self) -> String {
+        match self {
+            Content::Text(text) => text.clone(),
+            Content::Json(text) => text.clone(),
+            Content::Fsharp(text) => text.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Talk {
+    InputShown { name: AssistantName, message: Content },
+    ToAi { name: AssistantName, message: Content },
+    FromAi { name: AssistantName, message: Content },
+    ResponseShown { name: AssistantName, message: Content},
+
+}
+
+impl Talk {
+    fn get_message(&self) -> Content{
+        let n = match self {
+            Talk::InputShown {message,..} => message,
+            Talk::ToAi {message, ..} => message,
+            Talk::FromAi {message, ..} => message,
+            Talk::ResponseShown {message, ..} => message,
+        };
+        n.clone()
+    }
+    fn get_name(&self) -> AssistantName{
+        let n = match self {
+            Talk::InputShown {name,..} => name,
+            Talk::ToAi {name, ..} => name,
+            Talk::FromAi {name, ..} => name,
+            Talk::ResponseShown {name, ..} => name,
+        };
+        n.clone()
+    }
 }
 
 #[derive(Debug)]
-struct Model<C: Config, M: Clone + std::fmt::Debug> {
+struct Model<C: Config> {
     env: Cli,
     prompts: HashMap<String, openai_api::scenario::Prompt>,
     context: Option<Arc<Mutex<Context<C>>>>,
-    conversations: Vec<Talk<M>>,
+    conversations: Vec<Talk>,
     // edit_area contaiins current view of conversation,
     // Prompt is set up on Thread creation time and it is not changed.
     // Input edit_area will be used for querying to AI.
@@ -229,7 +265,7 @@ struct Model<C: Config, M: Clone + std::fmt::Debug> {
     auto: Option<usize>,
 }
 
-impl<C: Config, M: std::clone::Clone + std::fmt::Debug> Model<C, M> {
+impl<C: Config> Model<C> {
     fn dec_auto(&mut self) {
         if let Some(auto) = self.auto {
             if auto > 0 {
@@ -245,6 +281,31 @@ impl<C: Config, M: std::clone::Clone + std::fmt::Debug> Model<C, M> {
             }
         }
         return false;
+    }
+    fn put_talk(&mut self, talk:Talk) {
+        self.conversations.push(talk);
+    }
+    fn get_last_assistant_name(&self) -> Option<AssistantName>{
+        if self.conversations.is_empty() {
+            None
+        } else {
+            self.conversations.last().map(|talk| talk.get_name())
+        }
+    }
+    //
+    fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
+        for talk in self.conversations.iter().rev() {
+            let talk_ = match talk {
+                Talk::InputShown {name, message} => cnstr(name.to_string(), message.clone()),
+                Talk::ToAi {name, message} => cnstr(name.to_string(), message.clone()),
+                Talk::ResponseShown {name, message} => cnstr(name.to_string(), message.clone()),
+                Talk::FromAi {name, message} => cnstr(name.to_string(), message.clone()),
+            };
+            if *talk == talk_ {
+                return Some(talk.clone());
+            }
+        }
+        return None;
     }
 }
 
@@ -358,10 +419,9 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl<C: Config + std::fmt::Debug + Send + Sync + 'static, M> Application for Model<C, M>
+impl<C: Config + Debug + Send + Sync + 'static> Application for Model<C>
 where
     OpenAi: AiServiceApi<C>,
-    M: std::clone::Clone + std::fmt::Debug,
 {
     type Message = Message<C>;
     type Theme = Theme;
@@ -375,7 +435,7 @@ where
         Option<async_openai::Client<C>>,
     );
 
-    fn new(flags: <Model<C, M> as iced::Application>::Flags) -> (Model<C, M>, Command<Message<C>>) {
+    fn new(flags: <Model<C> as iced::Application>::Flags) -> (Model<C>, Command<Message<C>>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let mut prompt = EditArea::default();
@@ -393,10 +453,9 @@ where
         let client = create_opeai_client(&flags.1);
         let loaded = load_data(flags.2.get(name).unwrap().clone(), &tag);
         // Initialize EditArea with loaded input.
+        let mut prefixed_text = String::from("");
         if let Some(i) = loaded {
-            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
-            input.content = text_editor::Content::with_text(&prefixed_text);
-            prompt.content = text_editor::Content::with_text(&i.prompt);
+            prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
         let commands: Vec<Command<Message<C>>> = vec![Command::perform(
             connect(
@@ -417,7 +476,10 @@ where
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
                 auto: flags.0.auto,
-                conversations: Vec::new(),
+                conversations: vec![Talk::InputShown {
+                    name: name.clone(),
+                    message: Content::Text(prefixed_text)
+                }],
             },
             Command::<Message<C>>::batch(commands),
         )
@@ -428,11 +490,12 @@ where
     }
 
     fn update(&mut self, message: Message<C>) -> Command<Message<C>> {
-        debug!("{:?}", message);
-        match message {
+        info!("{:?}", message);
+        let command = match message {
             Message::Connected(Ok(ctx)) => {
-                info!("Connected");
+                info!("Connected: {:?}", &ctx);
                 self.context = Some(Arc::new(Mutex::new(ctx)));
+
                 Command::none()
             }
             Message::Connected(Err(_)) => Command::none(),
@@ -454,12 +517,6 @@ where
                         if let Some(i) = loaded {
                             self.current = (name.clone(), tag.clone());
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
-                            set_editor_contents(
-                                &mut self.edit_areas,
-                                AreaIndex::Input,
-                                &prefixed_text,
-                            );
-                            set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
                             do_next = true;
                         }
                     }
@@ -474,12 +531,6 @@ where
                         if let Some(i) = loaded {
                             let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
                             self.current = (name.clone(), tag.clone());
-                            set_editor_contents(
-                                &mut self.edit_areas,
-                                AreaIndex::Input,
-                                &prefixed_text,
-                            );
-                            set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &i.prompt);
                             do_next = true;
                         }
                     }
@@ -491,7 +542,7 @@ where
                         openai_api::ask(
                             pass_context,
                             pass_name,
-                            self.edit_areas[AreaIndex::Input as usize].content.text(),
+                            "".to_string(),
                         ),
                         move |answer| Message::Answered {
                             answer,
@@ -513,10 +564,7 @@ where
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
                         let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-                        set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &prefixed_text);
-
-                        let prompt = i.prompt.clone();
-                        set_editor_contents(&mut self.edit_areas, AreaIndex::Prompt, &prompt);
+                        self.put_talk(Talk::InputShown{name, message: Content::Text(prefixed_text)});
                     })
                     .ok_or(());
                 Command::none()
@@ -530,12 +578,13 @@ where
                     let pass_context = context.clone();
                     let pass_name = name.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
+                    self.put_talk(Talk::ToAi{name, message: Content::Text(input.clone())});
 
                     Command::perform(
                         openai_api::ask(
                             pass_context,
                             pass_name,
-                            self.edit_areas[AreaIndex::Input as usize].content.text(),
+                            input,
                         ),
                         move |answer| Message::Answered {
                             answer,
@@ -554,50 +603,18 @@ where
 
                 match answer {
                     Ok((name, text)) => {
-                        let opt_markers = self.env.get_markers();
-                        let mut content = text_editor::Content::with_text("");
-                        let context = self.context.clone().unwrap();
-                        let cloned_text = text.clone();
+                        self.put_talk( Talk::FromAi {name: name.clone(), message: Content::Text(text.clone())});
 
+                        let opt_markers = self.env.get_markers();
+                        let mut resp_content = Content::Text(text.clone());
                         if let Ok(markers) = opt_markers {
                             let contents = split_code(&text, &markers.clone()).clone();
-                            let json = String::from("json");
-                            let fsharp = String::from("fsharp");
-                            //let text = String::from("text");
-
-                            if let Some(Mark::Content {
-                                text,
-                                lang: Some(matcher),
-                            }) = get_content(contents)
-                            {
-                                if matcher == json {
-                                    let response = serde_json::from_str::<Response>(&text);
-                                    if let Ok(_resp) = response {
-                                        content = text_editor::Content::with_text(&text);
-                                    }
-                                } else if matcher == fsharp {
-                                    content = text_editor::Content::with_text(&text);
-                                    let mut path = PathBuf::from(&self.env.output_dir);
-                                    path.push("sample.fs");
-                                    command = Command::perform(
-                                        save_and_compile(path, text),
-                                        Message::Compiled,
-                                    );
-                                } else {
-                                    //
-                                }
-                            } else {
-                                trace!("No splitted contents: {}", &text);
-                                content = text_editor::Content::with_text(&text);
-                            }
+                            resp_content = extract_content(self, contents).unwrap_or(Content::Text(text));
                         } else {
                             trace!("No: markers");
-                            content = text_editor::Content::with_text(&text);
+                            resp_content = Content::Text(text);
                         }
-
-                        let default = EditArea::default();
-                        self.edit_areas[AreaIndex::Result as usize] =
-                            EditArea { content, ..default };
+                        self.put_talk(Talk::ResponseShown {name, message: resp_content})
                     }
                     _ => error!("FAILED"),
                 }
@@ -622,12 +639,30 @@ where
                 Command::none()
             }
             Message::DoNothing => Command::none(),
-        }
+        };
+
+        let (name, tag) = &self.current;
+        debug!("{:?}", &self.conversations);
+        debug!("current: {:?}", &self.current);
+        let input = self.get_talk(|name, message| Talk::InputShown {name, message})
+            .map(|t| t.get_message().get_text())
+            .unwrap_or("".to_string());
+        debug!("input: {:?}", &input);
+        set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &input);
+        let answer = self.get_talk(|name, message| Talk::ResponseShown {name, message})
+            .map(|t| t.get_message().get_text())
+            .unwrap_or("".to_string());
+        debug!("answer: {:?}", &answer);
+        set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &answer);
+
+        command
     }
+
 
     fn view(&self) -> Element<Message<C>> {
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
+
         column![
             row![
                 row(list_inputs(&self.prompts)
@@ -662,16 +697,48 @@ where
                     /*                    text_editor(&vec.get(AreaIndex::Prompt as usize).unwrap().content)
                                        .on_action(|action|Message::ActionPerformed(AreaIndex::Prompt, action)),
                     */
-                    text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
-                        .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
+                    text_editor(
+                        &vec.get(AreaIndex::Input as usize).unwrap().content
+                    ).on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
                 ],
                 column![
-                    text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content) //.on_action(|action|Message::ActionPerformed(AreaIndex::Result, action)),
+                   // text_editor(&answer_content)
+                    text_editor(
+                        &vec.get(AreaIndex::Result as usize).unwrap().content
+                    )
                 ],
             ],
         ]
         .into()
     }
+}
+
+
+fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>)
+    -> Option<Content>  {
+    let json = String::from("json");
+    let fsharp = String::from("fsharp");
+    if let Some(Mark::Content {
+                    text,
+                    lang: Some(matcher),
+                }) = get_content(contents.clone()) {
+        if matcher == json {
+            let response = serde_json::from_str::<Response>(&text);
+            if let Ok(_resp) = response {
+                return Some(Content::Json(text));
+            }
+        } else if matcher == fsharp {
+            return Some(Content::Fsharp(text));
+        } else {
+            warn!("Unknown matcher: {}", &text);
+            return Some(Content::Text(text));
+        }
+        return Some(Content::Text(text));
+    } else {
+        warn!("No splitted contents: {:?}", &contents);
+        return None;
+    }
+
 }
 
 fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {

@@ -75,6 +75,9 @@ impl<C: Config> Context<C> {
     pub fn client(self) -> Client<C> {
         self.client
     }
+    pub fn add_assistant(&mut self, name: &String, assistant: Assistant) -> () {
+        self.assistants.insert(name.clone(), assistant);
+    }
 }
 
 pub trait AiServiceApi<C: Config> {
@@ -133,8 +136,10 @@ pub async fn connect<C: Config>(
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
+            info!("Setting up assistant for {}", &key);
             let (thread, assistant) =
                 setup_assistant(&config, &context.client, &key, &prompt.instruction).await?;
+            context.add_assistant(&key, Assistant { thread, assistant });
             connection_setupped = true;
         }
     }

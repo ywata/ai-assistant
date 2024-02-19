@@ -209,6 +209,29 @@ impl Content {
     }
 }
 
+trait ContentView<C: Config> {
+    fn get_view(self) -> Element<'static, Message<C>>;
+    fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String;
+}
+impl<C: Config + 'static> ContentView<C> for Content {
+    fn get_view(self) -> Element<'static, Message<C>> {
+        match self {
+            Content::Text(text) => Text::new(text.clone()).into(),
+            Content::Json(text) => {
+                let hmap = serde_json::from_str::<HashMap<String, Vec<String>>>(&text).unwrap();
+                info!("{:?}", &hmap);
+                let r = to_checkboxes(hmap);
+
+                r.into()
+            }
+            Content::Fsharp(text) => Text::new(text.clone()).into(),
+        }
+    }
+    fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String {
+        fun(elm)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Talk {
     InputShown {
@@ -230,7 +253,7 @@ enum Talk {
 }
 
 impl Talk {
-    fn get_message(&self) -> Content {
+    fn get_message<'a>(&self) -> Content {
         let n = match self {
             Talk::InputShown { message, .. } => message,
             Talk::ToAi { message, .. } => message,
@@ -297,10 +320,14 @@ impl<C: Config> Model<C> {
     fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
         for talk in self.conversations.iter().rev() {
             let talk_ = match talk {
-                Talk::InputShown { name, message } => cnstr(name.to_string(), message.clone()),
-                Talk::ToAi { name, message } => cnstr(name.to_string(), message.clone()),
-                Talk::ResponseShown { name, message } => cnstr(name.to_string(), message.clone()),
-                Talk::FromAi { name, message } => cnstr(name.to_string(), message.clone()),
+                Talk::InputShown { name, message } => {
+                    cnstr(name.to_string().clone(), message.clone())
+                }
+                Talk::ToAi { name, message } => cnstr(name.to_string().clone(), message.clone()),
+                Talk::ResponseShown { name, message } => {
+                    cnstr(name.to_string().clone(), message.clone())
+                }
+                Talk::FromAi { name, message } => cnstr(name.to_string().clone(), message.clone()),
             };
             if *talk == talk_ {
                 return Some(talk.clone());
@@ -673,6 +700,17 @@ where
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
 
+        let response: Element<Message<C>> = self
+            .get_talk(|name, message| Talk::ResponseShown { name, message })
+            .map(|t| {
+                let talk = t.get_message();
+                let content = talk.get_view();
+                content
+            })
+            .unwrap_or(text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content).into());
+
+
+
         column![
             row![
                 row(list_inputs(&self.prompts)
@@ -707,9 +745,7 @@ where
                     text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
                         .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
                 ],
-                column![text_editor(
-                    &vec.get(AreaIndex::Result as usize).unwrap().content
-                )],
+                column![response,],
             ],
         ]
         .into()
@@ -777,7 +813,7 @@ fn to_checkboxes<'a, C: Config + 'a>(
     let mut col = Column::new();
     for (k, v) in resp {
         for i in v {
-            let cb = checkbox("default", false).on_toggle(Message::Toggled);
+            let cb = checkbox(i.clone(), false).on_toggle(Message::Toggled);
             col = col.push(cb)
         }
     }

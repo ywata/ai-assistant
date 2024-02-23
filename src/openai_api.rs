@@ -60,19 +60,28 @@ pub struct Assistant {
 }
 
 #[derive(Clone, Debug)]
-pub struct Context<C: Config> {
-    client: Client<C>,
+pub struct Context {
+    #[cfg(not(feature = "azure_ai"))]
+    client: Client<OpenAIConfig>,
+    #[cfg(feature = "azure_ai")]
+    client: Client<AzureConfig>,
     assistants: HashMap<AssistantName, Assistant>,
 }
 
-impl<C: Config> Context<C> {
-    pub fn new(client: Client<C>) -> Context<C> {
+#[cfg(not(feature = "azure_ai"))]
+pub type CClient = Client<OpenAIConfig>;
+#[cfg(feature = "azure_ai")]
+pub type CClient = Client<AzureConfig>;
+
+
+impl Context {
+    pub fn new(client: CClient) -> Context {
         Context {
             client,
             assistants: HashMap::new(),
         }
     }
-    pub fn client(self) -> Client<C> {
+    pub fn client(self) -> CClient {
         self.client
     }
     pub fn add_assistant(&mut self, name: &String, assistant: Assistant) {
@@ -80,59 +89,14 @@ impl<C: Config> Context<C> {
     }
 }
 
-pub trait AiServiceApi<C: Config> {
-    fn create_client(&self) -> Option<Client<C>>;
-}
 
-impl AiServiceApi<OpenAIConfig> for OpenAi {
-    fn create_client(&self) -> Option<Client<OpenAIConfig>> {
-        info!("Creating openai client");
-        match self {
-            OpenAi::OpenAiToken { token, .. } => {
-                let token = token.as_str();
-                let oai_config: OpenAIConfig = OpenAIConfig::default().with_api_key(token);
-
-                //create a client
-
-                Some(Client::with_config(oai_config))
-            }
-            _ => None,
-        }
-    }
-}
-
-impl AiServiceApi<AzureConfig> for OpenAi {
-    fn create_client(&self) -> Option<Client<AzureConfig>> {
-        info!("Creating azure client");
-        match self {
-            OpenAi::AzureAiToken {
-                key,
-                endpoint,
-                deployment_id,
-                api_version,
-            } => {
-                let azure_config: AzureConfig = AzureConfig::default()
-                    .with_api_key(key)
-                    //with_endpoint(endpoint)
-                    .with_api_base(endpoint)
-                    .with_deployment_id(deployment_id)
-                    .with_api_version(api_version);
-
-                //create a client
-                Some(Client::with_config(azure_config))
-            }
-            _ => None,
-        }
-    }
-}
-
-pub async fn connect<C: Config>(
+pub async fn connect(
     config: OpenAi,
-    client: Client<C>,
+    client: CClient,
     names: Vec<String>,
     prompts: HashMap<String, Prompt>,
-) -> Result<Context<C>, OpenAIApiError> {
-    let mut context: Context<C> = Context::new(client);
+) -> Result<Context, OpenAIApiError> {
+    let mut context: Context = Context::new(client);
     let mut connection_setupped = false;
     for key in names {
         if let Some(prompt) = prompts.get(&key) {
@@ -150,9 +114,9 @@ pub async fn connect<C: Config>(
     }
 }
 
-async fn setup_assistant<C: Config>(
+async fn setup_assistant(
     config: &OpenAi,
-    client: &Client<C>,
+    client: &CClient,
     name: &str,
     prompt: &str,
 ) -> Result<(ThreadObject, AssistantObject), OpenAIApiError> {
@@ -176,8 +140,8 @@ async fn setup_assistant<C: Config>(
     Ok((thread, assistant))
 }
 
-pub async fn ask<C: Config>(
-    context: Arc<Mutex<Context<C>>>,
+pub async fn ask(
+    context: Arc<Mutex<Context>>,
     name: String,
     input: String,
 ) -> Result<(String, String), (String, OpenAIApiError)> {
@@ -282,6 +246,56 @@ pub async fn ask<C: Config>(
 
     Ok((name, String::from("???")))
 }
+
+
+pub trait AiService<C: Config> {
+    fn create_client(&self) -> Option<Client<C>>;
+}
+
+
+impl AiService<OpenAIConfig> for OpenAi {
+    fn create_client(&self) -> Option<Client<OpenAIConfig>> {
+        info!("Creating openai client");
+        match self {
+            OpenAi::OpenAiToken { token, .. } => {
+                let token = token.as_str();
+                let oai_config: OpenAIConfig = OpenAIConfig::default().with_api_key(token);
+
+                //create a client
+
+                Some(Client::with_config(oai_config))
+            }
+            _ => None,
+        }
+    }
+}
+
+
+impl AiService<AzureConfig> for OpenAi {
+    fn create_client(&self) -> Option<Client<AzureConfig>> {
+        info!("Creating azure client");
+        match self {
+            OpenAi::AzureAiToken {
+                key,
+                endpoint,
+                deployment_id,
+                api_version,
+            } => {
+                let azure_config: AzureConfig = AzureConfig::default()
+                    .with_api_key(key)
+                    //with_endpoint(endpoint)
+                    .with_api_base(endpoint)
+                    .with_deployment_id(deployment_id)
+                    .with_api_version(api_version);
+
+                //create a client
+                Some(Client::with_config(azure_config))
+            }
+            _ => None,
+        }
+    }
+}
+
 
 pub fn report_status(status: RunStatus) {
     match status {

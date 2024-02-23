@@ -1,5 +1,6 @@
+use openai_api::ask;
 use log::warn;
-use openai_api::AssistantName;
+use openai_api::{AiService, AssistantName, CClient};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -23,7 +24,7 @@ use log::{debug, error, info, trace};
 
 use tokio::sync::Mutex;
 
-use openai_api::{connect, AiServiceApi, Context, OpenAIApiError, OpenAi};
+use openai_api::{connect, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 
@@ -119,10 +120,7 @@ pub fn main() -> Result<(), AssistantError> {
         .ok_or(AssistantError::AppAccessError)?;
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
-        #[cfg(not(feature = "azure_ai"))]
-        let client: Option<Client<OpenAIConfig>> = config.create_client();
-        #[cfg(feature = "azure_ai")]
-        let client: Option<Client<AzureConfig>> = config.create_client();
+        let client: Option<CClient> = config.create_client();
         let settings_default = Settings {
             flags: (args.clone(), config, prompts, workflow, args.auto, client),
             ..Default::default()
@@ -135,8 +133,8 @@ pub fn main() -> Result<(), AssistantError> {
 }
 
 #[derive(Clone, Debug)]
-enum Message<C: Config> {
-    Connected(Result<Context<C>, OpenAIApiError>),
+enum Message {
+    Connected(Result<Context, OpenAIApiError>),
     LoadInput {
         name: String,
         tag: String,
@@ -210,7 +208,7 @@ impl Content {
     }
 }
 
-impl<C: Config> Model<C> {
+impl Model {
     fn set_proposal(&mut self, content: Content) {
         self.proposal = match content {
             Content::Json(prop) => {
@@ -234,11 +232,11 @@ impl<C: Config> Model<C> {
     }
 }
 
-trait ContentView<C: Config> {
-    fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String;
+trait ContentView {
+    fn get_text(elm: &Element<Message>, fun: impl Fn(&Element<Message>) -> String) -> String;
 }
-impl<C: Config + 'static> ContentView<C> for Content {
-    fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String {
+impl ContentView for Content {
+    fn get_text(elm: &Element<Message>, fun: impl Fn(&Element<Message>) -> String) -> String {
         fun(elm)
     }
 }
@@ -285,10 +283,10 @@ impl Talk {
 }
 
 #[derive(Debug)]
-struct Model<C: Config> {
+struct Model {
     env: Cli,
     prompts: HashMap<String, openai_api::scenario::Prompt>,
-    context: Option<Arc<Mutex<Context<C>>>>,
+    context: Option<Arc<Mutex<Context>>>,
     conversations: Vec<Talk>,
     // edit_area contaiins current view of conversation,
     // Prompt is set up on Thread creation time and it is not changed.
@@ -301,7 +299,7 @@ struct Model<C: Config> {
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
 
-impl<C: Config> Model<C> {
+impl Model {
     fn dec_auto(&mut self) {
         if let Some(auto) = self.auto {
             if auto > 0 {
@@ -459,11 +457,9 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl<C: Config + Debug + Send + Sync + 'static> Application for Model<C>
-where
-    OpenAi: AiServiceApi<C>,
+impl Application for Model
 {
-    type Message = Message<C>;
+    type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
     type Flags = (
@@ -472,10 +468,10 @@ where
         HashMap<String, openai_api::scenario::Prompt>,
         Workflow,
         Option<usize>,
-        Option<async_openai::Client<C>>,
+        Option<CClient>,
     );
 
-    fn new(flags: <Model<C> as iced::Application>::Flags) -> (Model<C>, Command<Message<C>>) {
+    fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
         let prompt = EditArea::default();
@@ -497,7 +493,7 @@ where
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let commands: Vec<Command<Message<C>>> = vec![
+        let commands: Vec<Command<Message>> = vec![
             Command::perform(
                 connect(
                     flags.1.clone(),
@@ -527,7 +523,7 @@ where
                 }],
                 proposal: None,
             },
-            Command::<Message<C>>::batch(commands),
+            Command::<Message>::batch(commands),
         )
     }
 
@@ -535,7 +531,7 @@ where
         "title".to_string()
     }
 
-    fn update(&mut self, message: Message<C>) -> Command<Message<C>> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         info!("{:?}", message);
         let command = match message {
             Message::Connected(Ok(ctx)) => {
@@ -588,7 +584,7 @@ where
                     let pass_context = self.context.clone().unwrap();
                     let pass_name = name.clone();
                     Command::perform(
-                        openai_api::ask(pass_context, pass_name, "".to_string()),
+                        ask(pass_context, pass_name, "".to_string()),
                         move |answer| Message::Answered {
                             answer,
                             auto,
@@ -632,7 +628,7 @@ where
                     });
 
                     Command::perform(
-                        openai_api::ask(pass_context, pass_name, input),
+                        ask(pass_context, pass_name, input),
                         move |answer| Message::Answered {
                             answer,
                             auto,
@@ -729,11 +725,11 @@ where
         command
     }
 
-    fn view(&self) -> Element<Message<C>> {
+    fn view(&self) -> Element<Message> {
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
 
-        let response: Element<Message<C>> = self
+        let response: Element<Message> = self
             .proposal
             .clone()
             .map(|p| to_checkboxes(p).into())
@@ -780,7 +776,7 @@ where
     }
 }
 
-fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>) -> Option<Content> {
+fn extract_content(model: &mut Model, contents: Vec<Mark>) -> Option<Content> {
     let json = String::from("json");
     let fsharp = String::from("fsharp");
     if let Some(Mark::Content {
@@ -825,14 +821,14 @@ impl From<reqwest::Error> for AssistantError {
     }
 }
 
-fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>> {
+fn button<'a>(text: &str, tag: &str) -> widget::Button<'a, Message> {
     let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
 }
 
-fn to_checkboxes<'a, C: Config + 'a>(
+fn to_checkboxes<'a>(
     resp: HashMap<String, Vec<(String, bool)>>,
-) -> iced::widget::Column<'a, Message<C>> {
+) -> iced::widget::Column<'a, Message> {
     let mut col = Column::new();
     let mut keys: Vec<_> = resp.keys().cloned().collect();
     keys.sort();

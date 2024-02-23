@@ -59,7 +59,7 @@ impl Workflow {
 
 fn list_workflow_inputs(workflow: &Workflow) -> Vec<(String, String)> {
     let mut vec = Vec::new();
-    for (name, directives) in workflow.workflow.iter() {
+    for (_name, directives) in workflow.workflow.iter() {
         for (_person, directive) in directives.iter() {
             match directive {
                 Directive::PassResultTo { name, tag } => {

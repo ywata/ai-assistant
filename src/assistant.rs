@@ -230,15 +230,6 @@ impl Model {
     }
 }
 
-trait ContentView {
-    fn get_text(elm: &Element<Message>, fun: impl Fn(&Element<Message>) -> String) -> String;
-}
-impl ContentView for Content {
-    fn get_text(elm: &Element<Message>, fun: impl Fn(&Element<Message>) -> String) -> String {
-        fun(elm)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 enum Talk {
     InputShown {
@@ -317,14 +308,6 @@ impl Model {
     fn put_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
     }
-    fn get_last_assistant_name(&self) -> Option<AssistantName> {
-        if self.conversations.is_empty() {
-            None
-        } else {
-            self.conversations.last().map(|talk| talk.get_name())
-        }
-    }
-    //
     fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
         for talk in self.conversations.iter().rev() {
             let talk_ = match talk {
@@ -553,9 +536,8 @@ impl Application for Model {
 
                         let loaded =
                             load_data_from_prompt(self.prompts.get(&name).unwrap().clone(), &tag);
-                        if let Some(i) = loaded {
+                        if let Some(_) = loaded {
                             self.current = (name.clone(), tag.clone());
-                            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
                             do_next = true;
                         }
                     }
@@ -570,8 +552,7 @@ impl Application for Model {
                                 .map(|t| t.get_message().get_text())
                                 .unwrap_or("".to_string()),
                         );
-                        if let Some(i) = loaded {
-                            let prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
+                        if let Some(_) = loaded {
                             self.current = (name.clone(), tag.clone());
                             do_next = true;
                         }

@@ -14,7 +14,7 @@ use std::process::Output;
 use iced::widget::{
     self, checkbox, column, horizontal_space, row, text_editor, Button, Column, Text,
 };
-use iced::{Alignment, Application, Command, Element, font, Settings, Theme};
+use iced::{font, Alignment, Application, Command, Element, Settings, Theme};
 
 use thiserror::Error;
 
@@ -210,14 +210,13 @@ impl Content {
     }
 }
 
-impl <C:Config> Model<C> {
-    fn set_proposal(&mut self, content:Content) {
+impl<C: Config> Model<C> {
+    fn set_proposal(&mut self, content: Content) {
         self.proposal = match content {
             Content::Json(prop) => {
                 let prop = serde_json::from_str::<HashMap<String, Vec<String>>>(&prop)
                     .map(|hmap| {
-                        hmap
-                            .iter()
+                        hmap.iter()
                             .map(|(k, v)| {
                                 let mut vec = Vec::new();
                                 for i in v {
@@ -226,9 +225,10 @@ impl <C:Config> Model<C> {
                                 (k.clone(), vec)
                             })
                             .collect()
-                    }).ok();
+                    })
+                    .ok();
                 prop
-            },
+            }
             _ => None,
         };
     }
@@ -299,7 +299,6 @@ struct Model<C: Config> {
     workflow: Workflow,
     auto: Option<usize>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
-
 }
 
 impl<C: Config> Model<C> {
@@ -502,14 +501,15 @@ where
             font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
                 .map(Message::FontLoaded),
             Command::perform(
-            connect(
-                flags.1.clone(),
-                client.unwrap(),
-                flags.0.prompt_keys.clone(),
-                flags.2.clone(),
+                connect(
+                    flags.1.clone(),
+                    client.unwrap(),
+                    flags.0.prompt_keys.clone(),
+                    flags.2.clone(),
+                ),
+                Message::Connected,
             ),
-            Message::Connected,
-        )];
+        ];
 
         (
             Model {
@@ -674,7 +674,6 @@ where
                     _ => error!("FAILED"),
                 }
 
-
                 if auto {
                     self.update(Message::NextWorkflow {
                         auto: self.auto_enabled(),
@@ -687,7 +686,7 @@ where
                 debug!("{:?}", msg);
                 Command::none()
             }
-            Message::Toggled(message, i, checked) =>{
+            Message::Toggled(message, i, checked) => {
                 info!("Toggled: message:{}, checked:{}", message, checked);
 
                 if let Some(vec) = &mut self.proposal {
@@ -705,7 +704,7 @@ where
                     let ctx = context.lock().await;
                 });
                 Command::none()
-            },
+            }
             Message::FontLoaded(_) => Command::none(),
             Message::DoNothing => Command::none(),
         };
@@ -733,10 +732,11 @@ where
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
 
-        let response: Element<Message<C>>
-            = self.proposal.clone().map(|p| to_checkboxes(p).into())
+        let response: Element<Message<C>> = self
+            .proposal
+            .clone()
+            .map(|p| to_checkboxes(p).into())
             .unwrap_or(text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content).into());
-
 
         column![
             row![

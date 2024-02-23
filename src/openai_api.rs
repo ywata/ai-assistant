@@ -9,7 +9,7 @@ use async_openai::{
     Client,
 };
 use std::collections::HashMap;
-use std::future::Future;
+
 use std::sync::Arc;
 
 use crate::scenario::Prompt;
@@ -75,7 +75,7 @@ impl<C: Config> Context<C> {
     pub fn client(self) -> Client<C> {
         self.client
     }
-    pub fn add_assistant(&mut self, name: &String, assistant: Assistant) -> () {
+    pub fn add_assistant(&mut self, name: &String, assistant: Assistant) {
         self.assistants.insert(name.clone(), assistant);
     }
 }

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 
-use async_openai::config::{AzureConfig, Config, OpenAIConfig};
+use async_openai::config::{Config, OpenAIConfig};
 use async_openai::Client;
 use regex::Regex;
 use std::process::Output;
@@ -20,13 +20,13 @@ use thiserror::Error;
 
 use clap::{Parser, Subcommand};
 use log::{debug, error, info, trace};
-use serde::Deserialize;
+
 use tokio::sync::Mutex;
 
 use openai_api::{connect, AiServiceApi, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
-use crate::config::convert;
+
 use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
 
 //use thiserror::Error;
@@ -316,7 +316,7 @@ impl<C: Config> Model<C> {
                 return true;
             }
         }
-        return false;
+        false
     }
     fn put_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
@@ -345,7 +345,7 @@ impl<C: Config> Model<C> {
                 return Some(talk.clone());
             }
         }
-        return None;
+        None
     }
 }
 
@@ -454,7 +454,7 @@ fn get_content(contents: Vec<Mark>) -> Option<Mark> {
 fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
     area[idx as usize] = EditArea {
-        content: text_editor::Content::with_text(&text),
+        content: text_editor::Content::with_text(text),
         ..default
     };
 }
@@ -478,8 +478,8 @@ where
     fn new(flags: <Model<C> as iced::Application>::Flags) -> (Model<C>, Command<Message<C>>) {
         let name = flags.0.prompt_keys.first().unwrap();
         let tag = flags.0.tag.clone();
-        let mut prompt = EditArea::default();
-        let mut input = EditArea::default();
+        let prompt = EditArea::default();
+        let input = EditArea::default();
         let result = EditArea::default();
 
         // As OpenAICOnfig and AzureConfig cannot co-exists in a generic way,
@@ -488,7 +488,7 @@ where
         // conditional compilation.
         #[cfg(not(azure_ai))]
         //let client = create_opeai_client(&flags.1);
-        let client = (&flags.1).create_client();
+        let client = flags.1.create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
         let loaded = load_data_from_prompt(flags.2.get(name).unwrap().clone(), &tag);
@@ -497,7 +497,7 @@ where
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let mut commands: Vec<Command<Message<C>>> = vec![
+        let commands: Vec<Command<Message<C>>> = vec![
             Command::perform(
                 connect(
                     flags.1.clone(),
@@ -551,7 +551,7 @@ where
                 let (name, tag) = &self.current.clone();
                 let mut do_next = false;
                 info!("current: name:{}, tag:{}", name, tag);
-                let _ = match wf.get_directive(&name, &tag) {
+                match wf.get_directive(name, tag) {
                     Directive::KeepAsIs => (),
                     Directive::Stop => (),
 
@@ -591,7 +591,7 @@ where
                         openai_api::ask(pass_context, pass_name, "".to_string()),
                         move |answer| Message::Answered {
                             answer,
-                            auto: auto.clone(),
+                            auto,
                         },
                     )
                 } else {
@@ -635,7 +635,7 @@ where
                         openai_api::ask(pass_context, pass_name, input),
                         move |answer| Message::Answered {
                             answer,
-                            auto: auto.clone(),
+                            auto,
                         },
                     )
                 } else {
@@ -644,10 +644,10 @@ where
             }
             Message::Answered { answer, auto } => {
                 info!("{:?}", answer);
-                let _ = self.dec_auto();
+                self.dec_auto();
                 self.proposal = None;
 
-                let mut command = Command::none();
+                let command = Command::none();
 
                 match answer {
                     Ok((name, text)) => {
@@ -691,7 +691,7 @@ where
                 info!("Toggled: message:{}, checked:{}", message, checked);
 
                 if let Some(vec) = &mut self.proposal {
-                    if let Some(mut v) = vec.get_mut(&message) {
+                    if let Some(v) = vec.get_mut(&message) {
                         v[i].1 = checked;
                     }
                 }
@@ -748,20 +748,20 @@ where
                         .into())),
                 row![
                     horizontal_space(),
-                    button(&"Next", &"").on_press(Message::NextWorkflow {
+                    button("Next", "").on_press(Message::NextWorkflow {
                         auto: self.auto_enabled()
                     }),
-                    button(&"Ask AI", &"").on_press(Message::QueryAi {
+                    button("Ask AI", "").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: false,
                     }),
-                    button(&"auto", &"").on_press(Message::QueryAi {
+                    button("auto", "").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: true,
                     }),
-                    button(&"save", &"").on_press(Message::SaveConversation {
+                    button("save", "").on_press(Message::SaveConversation {
                         outut_dir: self.env.output_dir.clone(),
                     }),
                 ]
@@ -799,10 +799,10 @@ fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>) -> Opti
             warn!("Unknown matcher: {}", &text);
             return Some(Content::Text(text));
         }
-        return Some(Content::Text(text));
+        Some(Content::Text(text))
     } else {
         warn!("No splitted contents: {:?}", &contents);
-        return None;
+        None
     }
 }
 
@@ -834,7 +834,7 @@ fn to_checkboxes<'a, C: Config + 'a>(
     resp: HashMap<String, Vec<(String, bool)>>,
 ) -> iced::widget::Column<'a, Message<C>> {
     let mut col = Column::new();
-    let mut keys: Vec<_> = resp.keys().map(|k| k.clone()).collect();
+    let mut keys: Vec<_> = resp.keys().cloned().collect();
     keys.sort();
     for k in keys {
         let v = &resp[&k.clone()];
@@ -843,8 +843,8 @@ fn to_checkboxes<'a, C: Config + 'a>(
         for (i, (msg, b)) in v.iter().enumerate() {
             let copy_key = k.clone();
 
-            let cb = checkbox(msg.clone(), b.clone())
-                .on_toggle(move |b| Message::Toggled(copy_key.clone(), i.clone(), b.clone()));
+            let cb = checkbox(msg.clone(), *b)
+                .on_toggle(move |b| Message::Toggled(copy_key.clone(), i, b));
             col = col.push(cb)
         }
     }

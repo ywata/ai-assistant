@@ -23,10 +23,10 @@ tokio = { version = "1.35", features=["fs", "process"]}
 #rocket = { version = "0.5", features=["json"]}
 
 #iced = { version = "0.10", features = ["debug", "image", "tokio"]}
-iced = {git = "https://github.com/ywata/iced", rev = "c76a9eb2ff08ac242ed27d7fb11f536c1cc4411a", features = ["debug", "image", "tokio"]}
+iced = {git = "https://github.com/iced-rs/iced", rev = "2f289af93c0bfef51698e1aca50696aef1cc6ecc", features = ["debug", "image", "tokio"]}
 reqwest = { version = "0.11", features = ["json"]}
 rand = {version = "0.8"}
-winit = { git = "https://github.com/iced-rs/winit.git", rev = "c52db2045d0a2f1b8d9923870de1d4ab1994146e", default-features = false }
+winit = { git = "https://github.com/iced-rs/winit.git", default-features = false }
 
 
 rfd = "0.12"

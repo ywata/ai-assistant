@@ -73,7 +73,6 @@ pub type CClient = Client<OpenAIConfig>;
 #[cfg(feature = "azure_ai")]
 pub type CClient = Client<AzureConfig>;
 
-
 impl Context {
     pub fn new(client: CClient) -> Context {
         Context {
@@ -88,7 +87,6 @@ impl Context {
         self.assistants.insert(name.clone(), assistant);
     }
 }
-
 
 pub async fn connect(
     config: OpenAi,
@@ -247,11 +245,9 @@ pub async fn ask(
     Ok((name, String::from("???")))
 }
 
-
 pub trait AiService<C: Config> {
     fn create_client(&self) -> Option<Client<C>>;
 }
-
 
 impl AiService<OpenAIConfig> for OpenAi {
     fn create_client(&self) -> Option<Client<OpenAIConfig>> {
@@ -269,7 +265,6 @@ impl AiService<OpenAIConfig> for OpenAi {
         }
     }
 }
-
 
 impl AiService<AzureConfig> for OpenAi {
     fn create_client(&self) -> Option<Client<AzureConfig>> {
@@ -295,7 +290,6 @@ impl AiService<AzureConfig> for OpenAi {
         }
     }
 }
-
 
 pub fn report_status(status: RunStatus) {
     match status {

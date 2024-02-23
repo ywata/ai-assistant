@@ -1,5 +1,5 @@
-use openai_api::ask;
 use log::warn;
+use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 
-use async_openai::config::{Config, OpenAIConfig};
-use async_openai::Client;
 use regex::Regex;
 use std::process::Output;
 
@@ -457,8 +455,7 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl Application for Model
-{
+impl Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
@@ -493,20 +490,20 @@ impl Application for Model
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let commands: Vec<Command<Message>> = vec![
-            Command::perform(
-                connect(
-                    flags.1.clone(),
-                    client.unwrap(),
-                    flags.0.prompt_keys.clone(),
-                    flags.2.clone(),
-                ),
-                Message::Connected,
+        let commands: Vec<Command<Message>> = vec![Command::perform(
+            connect(
+                flags.1.clone(),
+                client.unwrap(),
+                flags.0.prompt_keys.clone(),
+                flags.2.clone(),
             ),
-        ];
+            Message::Connected,
+        )];
         #[cfg(feature = "load_font")]
-        commands.push(font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
-            .map(Message::FontLoaded));
+        commands.push(
+            font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
+                .map(Message::FontLoaded),
+        );
 
         (
             Model {
@@ -585,10 +582,7 @@ impl Application for Model
                     let pass_name = name.clone();
                     Command::perform(
                         ask(pass_context, pass_name, "".to_string()),
-                        move |answer| Message::Answered {
-                            answer,
-                            auto,
-                        },
+                        move |answer| Message::Answered { answer, auto },
                     )
                 } else {
                     Command::none()
@@ -627,13 +621,9 @@ impl Application for Model
                         message: Content::Text(input.clone()),
                     });
 
-                    Command::perform(
-                        ask(pass_context, pass_name, input),
-                        move |answer| Message::Answered {
-                            answer,
-                            auto,
-                        },
-                    )
+                    Command::perform(ask(pass_context, pass_name, input), move |answer| {
+                        Message::Answered { answer, auto }
+                    })
                 } else {
                     Command::none()
                 }
@@ -811,7 +801,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     }
     items
 }
-
 
 impl From<reqwest::Error> for AssistantError {
     fn from(error: reqwest::Error) -> AssistantError {

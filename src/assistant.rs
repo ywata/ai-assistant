@@ -789,7 +789,7 @@ fn extract_content<C: Config>(model: &mut Model<C>, contents: Vec<Mark>) -> Opti
     }) = get_content(contents.clone())
     {
         if matcher == json {
-            let response = serde_json::from_str::<Response>(&text);
+            let response = serde_json::from_str::<HashMap<String, Vec<String>>>(&text);
             if let Ok(_resp) = response {
                 return Some(Content::Json(text));
             }
@@ -816,11 +816,6 @@ fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     items
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct Response {
-    missing: Vec<String>,
-    possible: Vec<String>,
-}
 
 impl From<reqwest::Error> for AssistantError {
     fn from(error: reqwest::Error) -> AssistantError {

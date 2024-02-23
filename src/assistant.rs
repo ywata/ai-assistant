@@ -14,7 +14,7 @@ use std::process::Output;
 use iced::widget::{
     self, checkbox, column, horizontal_space, row, text_editor, Button, Column, Text,
 };
-use iced::{Alignment, Application, Command, Element, Settings, Theme};
+use iced::{Alignment, Application, Command, Element, font, Settings, Theme};
 
 use thiserror::Error;
 
@@ -162,7 +162,8 @@ enum Message<C: Config> {
     SaveConversation {
         outut_dir: String,
     },
-    Toggled(bool),
+    Toggled(String, usize, bool),
+    FontLoaded(Result<(), font::Error>),
     DoNothing,
 }
 
@@ -209,24 +210,34 @@ impl Content {
     }
 }
 
+impl <C:Config> Model<C> {
+    fn set_proposal(&mut self, content:Content) {
+        self.proposal = match content {
+            Content::Json(prop) => {
+                let prop = serde_json::from_str::<HashMap<String, Vec<String>>>(&prop)
+                    .map(|hmap| {
+                        hmap
+                            .iter()
+                            .map(|(k, v)| {
+                                let mut vec = Vec::new();
+                                for i in v {
+                                    vec.push((i.clone(), false));
+                                }
+                                (k.clone(), vec)
+                            })
+                            .collect()
+                    }).ok();
+                prop
+            },
+            _ => None,
+        };
+    }
+}
+
 trait ContentView<C: Config> {
-    fn get_view(self) -> Element<'static, Message<C>>;
     fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String;
 }
 impl<C: Config + 'static> ContentView<C> for Content {
-    fn get_view(self) -> Element<'static, Message<C>> {
-        match self {
-            Content::Text(text) => Text::new(text.clone()).into(),
-            Content::Json(text) => {
-                let hmap = serde_json::from_str::<HashMap<String, Vec<String>>>(&text).unwrap();
-                info!("{:?}", &hmap);
-                let r = to_checkboxes(hmap);
-
-                r.into()
-            }
-            Content::Fsharp(text) => Text::new(text.clone()).into(),
-        }
-    }
     fn get_text(elm: &Element<Message<C>>, fun: impl Fn(&Element<Message<C>>) -> String) -> String {
         fun(elm)
     }
@@ -287,6 +298,8 @@ struct Model<C: Config> {
     current: (String, String),
     workflow: Workflow,
     auto: Option<usize>,
+    proposal: Option<HashMap<String, Vec<(String, bool)>>>,
+
 }
 
 impl<C: Config> Model<C> {
@@ -485,7 +498,10 @@ where
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let commands: Vec<Command<Message<C>>> = vec![Command::perform(
+        let commands: Vec<Command<Message<C>>> = vec![
+            font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
+                .map(Message::FontLoaded),
+            Command::perform(
             connect(
                 flags.1.clone(),
                 client.unwrap(),
@@ -508,6 +524,7 @@ where
                     name: name.clone(),
                     message: Content::Text(prefixed_text),
                 }],
+                proposal: None,
             },
             Command::<Message<C>>::batch(commands),
         )
@@ -627,6 +644,7 @@ where
             Message::Answered { answer, auto } => {
                 info!("{:?}", answer);
                 let _ = self.dec_auto();
+                self.proposal = None;
 
                 let mut command = Command::none();
 
@@ -647,6 +665,7 @@ where
                             trace!("No: markers");
                             resp_content = Content::Text(text);
                         }
+                        self.set_proposal(resp_content.clone());
                         self.put_talk(Talk::ResponseShown {
                             name,
                             message: resp_content,
@@ -654,6 +673,8 @@ where
                     }
                     _ => error!("FAILED"),
                 }
+
+
                 if auto {
                     self.update(Message::NextWorkflow {
                         auto: self.auto_enabled(),
@@ -666,14 +687,26 @@ where
                 debug!("{:?}", msg);
                 Command::none()
             }
-            Message::Toggled(_) => Command::none(),
+            Message::Toggled(message, i, checked) =>{
+                info!("Toggled: message:{}, checked:{}", message, checked);
+
+                if let Some(vec) = &mut self.proposal {
+                    if let Some(mut v) = vec.get_mut(&message) {
+                        v[i].1 = checked;
+                    }
+                }
+
+                Command::none()
+            }
+
             Message::SaveConversation { outut_dir } => {
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
                     let ctx = context.lock().await;
                 });
                 Command::none()
-            }
+            },
+            Message::FontLoaded(_) => Command::none(),
             Message::DoNothing => Command::none(),
         };
 
@@ -700,15 +733,9 @@ where
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
 
-        let response: Element<Message<C>> = self
-            .get_talk(|name, message| Talk::ResponseShown { name, message })
-            .map(|t| {
-                let talk = t.get_message();
-                let content = talk.get_view();
-                content
-            })
+        let response: Element<Message<C>>
+            = self.proposal.clone().map(|p| to_checkboxes(p).into())
             .unwrap_or(text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content).into());
-
 
 
         column![
@@ -808,12 +835,20 @@ fn button<'a, C: Config>(text: &str, tag: &str) -> widget::Button<'a, Message<C>
 }
 
 fn to_checkboxes<'a, C: Config + 'a>(
-    resp: HashMap<String, Vec<String>>,
+    resp: HashMap<String, Vec<(String, bool)>>,
 ) -> iced::widget::Column<'a, Message<C>> {
     let mut col = Column::new();
-    for (k, v) in resp {
-        for i in v {
-            let cb = checkbox(i.clone(), false).on_toggle(Message::Toggled);
+    let mut keys: Vec<_> = resp.keys().map(|k| k.clone()).collect();
+    keys.sort();
+    for k in keys {
+        let v = &resp[&k.clone()];
+        col = col.push(Text::new(k.clone()));
+
+        for (i, (msg, b)) in v.iter().enumerate() {
+            let copy_key = k.clone();
+
+            let cb = checkbox(msg.clone(), b.clone())
+                .on_toggle(move |b| Message::Toggled(copy_key.clone(), i.clone(), b.clone()));
             col = col.push(cb)
         }
     }

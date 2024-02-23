@@ -497,9 +497,7 @@ where
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let commands: Vec<Command<Message<C>>> = vec![
-            font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
-                .map(Message::FontLoaded),
+        let mut commands: Vec<Command<Message<C>>> = vec![
             Command::perform(
                 connect(
                     flags.1.clone(),
@@ -510,6 +508,9 @@ where
                 Message::Connected,
             ),
         ];
+        #[cfg(feature = "load_font")]
+        commands.push(font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
+            .map(Message::FontLoaded));
 
         (
             Model {

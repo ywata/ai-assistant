@@ -473,7 +473,7 @@ impl Application for Model {
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let commands: Vec<Command<Message>> = vec![Command::perform(
+        let mut commands: Vec<Command<Message>> = vec![Command::perform(
             connect(
                 flags.1.clone(),
                 client.unwrap(),
@@ -669,7 +669,7 @@ impl Application for Model {
             Message::SaveConversation { outut_dir } => {
                 let context = self.context.clone().unwrap();
                 let _handle = tokio::spawn(async move {
-                    let ctx = context.lock().await;
+                    let _ctx = context.lock().await;
                 });
                 Command::none()
             }

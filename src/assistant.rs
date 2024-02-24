@@ -535,21 +535,29 @@ impl Application for Model {
                     Directive::KeepAsIs => (),
                     Directive::Stop => (),
 
-                    Directive::JumpTo { name, tag } => {
-                        info!("JumpTo: name:{}, tag:{}", name, tag);
-                        let loaded =
-                            load_data_from_prompt(self.prompts.get(&name).unwrap().clone(), &tag);
+                    Directive::JumpTo {
+                        name: next_name,
+                        tag: next_tag,
+                    } => {
+                        info!("JumpTo: name:{}, tag:{}", next_name, next_tag);
+                        let loaded = load_data_from_prompt(
+                            self.prompts.get(&next_name).unwrap().clone(),
+                            &next_tag,
+                        );
                         if let Some(_) = loaded {
                             do_next = true;
-                            next_current = Some((name.clone(), tag.clone()));
+                            next_current = Some((next_name.clone(), next_tag.clone()));
                         }
                     }
-                    Directive::PassResultTo { name, tag } => {
-                        info!("PassResultTo: name:{}, tag:{}", name, tag);
+                    Directive::PassResultTo {
+                        name: next_name,
+                        tag: next_tag,
+                    } => {
+                        info!("PassResultTo: name:{}, tag:{}", next_name, next_tag);
 
                         if let Some(loaded) = load_content(
-                            self.prompts.get(&name).unwrap().clone(),
-                            &tag,
+                            self.prompts.get(&next_name).unwrap().clone(),
+                            &next_tag,
                             &self
                                 .get_talk(|name, message| Talk::ResponseShown { name, message })
                                 .map(|t| t.get_message().get_text())
@@ -557,10 +565,10 @@ impl Application for Model {
                         ) {
                             info!("PassResultTo: loaded:{:?}", &loaded);
                             self.put_talk(Talk::InputShown {
-                                name: name.clone(),
+                                name: next_name.clone(),
                                 message: Content::Text(loaded.input.clone()),
                             });
-                            next_current = Some((name, tag));
+                            next_current = Some((next_name, next_tag));
                             do_next = true;
                         }
                     }

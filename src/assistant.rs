@@ -512,67 +512,66 @@ impl Application for Model {
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
-        info!("{:?}", message);
+        info!("Message:{:?}", message);
+        info!("current: {:?}", &self.current);
+        let mut next_current: Option<(AssistantName, String)> = None;
         let command = match message {
             Message::Connected(Ok(ctx)) => {
                 info!("Connected: {:?}", &ctx);
                 self.context = Some(Arc::new(Mutex::new(ctx)));
-
+                //next_current = Some((self.current.0.clone(), self.current.1.clone()));
                 Command::none()
             }
             Message::Connected(Err(_)) => Command::none(),
 
             Message::NextWorkflow { auto } => {
+                let current = self.current.clone();
+                info!("NextWorkflow:current {:?}", current.clone());
                 let wf = &self.workflow;
-                let (name, tag) = &self.current.clone();
+
                 let mut do_next = false;
-                info!("current: name:{}, tag:{}", name, tag);
-                match wf.get_directive(name, tag) {
+
+                match wf.get_directive(&current.0, &current.1) {
                     Directive::KeepAsIs => (),
                     Directive::Stop => (),
 
                     Directive::JumpTo { name, tag } => {
                         info!("JumpTo: name:{}, tag:{}", name, tag);
-
                         let loaded =
                             load_data_from_prompt(self.prompts.get(&name).unwrap().clone(), &tag);
                         if let Some(_) = loaded {
-                            self.current = (name.clone(), tag.clone());
                             do_next = true;
+                            next_current = Some((name.clone(), tag.clone()));
                         }
                     }
                     Directive::PassResultTo { name, tag } => {
                         info!("PassResultTo: name:{}, tag:{}", name, tag);
-                        self.current = (name.clone(), tag.clone());
-                        let loaded = load_content(
+
+                        if let Some(loaded) = load_content(
                             self.prompts.get(&name).unwrap().clone(),
                             &tag,
                             &self
                                 .get_talk(|name, message| Talk::ResponseShown { name, message })
                                 .map(|t| t.get_message().get_text())
                                 .unwrap_or("".to_string()),
-                        );
-                        if let Some(_) = loaded {
-                            self.current = (name.clone(), tag.clone());
+                        ) {
+                            info!("PassResultTo: loaded:{:?}", &loaded);
+                            self.put_talk(Talk::InputShown {
+                                name: name.clone(),
+                                message: Content::Text(loaded.input.clone()),
+                            });
+                            next_current = Some((name, tag));
                             do_next = true;
                         }
                     }
                 };
-                if auto && do_next {
-                    let pass_context = self.context.clone().unwrap();
-                    let pass_name = name.clone();
-                    Command::perform(
-                        ask(pass_context, pass_name, "".to_string()),
-                        move |answer| Message::Answered { answer, auto },
-                    )
-                } else {
-                    Command::none()
-                }
+                Command::none()
             }
 
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
-                self.current = (name.clone(), tag.clone());
+                next_current = Some((name.clone(), tag.clone()));
+
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
                 let result = load_data_from_prompt(prompt, &tag)
@@ -610,7 +609,6 @@ impl Application for Model {
                 }
             }
             Message::Answered { answer, auto } => {
-                info!("{:?}", answer);
                 self.dec_auto();
                 self.proposal = None;
 
@@ -618,6 +616,7 @@ impl Application for Model {
 
                 match answer {
                     Ok((name, text)) => {
+                        next_current = Some((self.current.0.clone(), self.current.1.clone()));
                         self.put_talk(Talk::FromAi {
                             name: name.clone(),
                             message: Content::Text(text.clone()),
@@ -677,21 +676,24 @@ impl Application for Model {
             Message::DoNothing => Command::none(),
         };
 
-        let (name, tag) = &self.current;
-        debug!("{:?}", &self.conversations);
-        debug!("current: {:?}", &self.current);
-        let input = self
-            .get_talk(|name, message| Talk::InputShown { name, message })
-            .map(|t| t.get_message().get_text())
-            .unwrap_or("".to_string());
-        debug!("input: {:?}", &input);
-        set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &input);
-        let answer = self
-            .get_talk(|name, message| Talk::ResponseShown { name, message })
-            .map(|t| t.get_message().get_text())
-            .unwrap_or("".to_string());
-        debug!("answer: {:?}", &answer);
-        set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &answer);
+        if let Some((name, tag)) = next_current {
+            info!("Updated to: {} {}", &name, &tag);
+            self.current = (name, tag);
+            debug!("{:?}", &self.conversations);
+
+            let input = self
+                .get_talk(|name, message| Talk::InputShown { name, message })
+                .map(|t| t.get_message().get_text())
+                .unwrap_or("".to_string());
+            info!("input: {:?}", &input);
+            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &input);
+            let answer = self
+                .get_talk(|name, message| Talk::ResponseShown { name, message })
+                .map(|t| t.get_message().get_text())
+                .unwrap_or("junk".to_string());
+            info!("answer: {:?}", &answer);
+            set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &answer);
+        }
 
         command
     }

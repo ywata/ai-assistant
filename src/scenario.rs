@@ -74,7 +74,7 @@ fn list_workflow_inputs(workflow: &Workflow) -> Vec<(String, String)> {
     }
     vec
 }
-fn list_input_specifiers(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
+fn list_input_identifier(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
     let mut vec = Vec::new();
     for (name, prompt) in prompts.iter() {
         for input in prompt.inputs.iter() {
@@ -94,7 +94,7 @@ pub fn parse_scenario(
     // 1. if the workflow has a directive that points to a prompt in promts.
 
     let workflow_inputs = list_workflow_inputs(&workflow);
-    let input_specifiers = list_input_specifiers(&prompts);
+    let input_specifiers = list_input_identifier(&prompts);
     for (name, tag) in workflow_inputs.iter() {
         if !input_specifiers.contains(&(name.clone(), tag.clone())) {
             error!("({},{}) is not in {:?}", name, tag, input_specifiers);
@@ -104,26 +104,19 @@ pub fn parse_scenario(
     Some((prompts, workflow))
 }
 
-pub fn parse_cli_settings<'a>(
+// Check to see if key is in the list of input identifiers
+pub fn parse_defined_key<'a>(
     prompts: &'a HashMap<String, Prompt>,
-    keys: &'a Vec<String>,
-    tag: &'a String,
-) -> Option<(&'a Vec<String>, &'a String)> {
-    if keys.is_empty() {
+    key: &'a String,
+) -> Option<String> {
+    let filtered_keys: Vec<String> = list_input_identifier(prompts)
+        .iter()
+        .filter(|(name, _tag)| name == key)
+        .map(|(_name, tag)| tag.clone())
+        .collect();
+
+    if filtered_keys.is_empty() {
         return None;
     }
-
-    let input_specifiers = list_input_specifiers(prompts);
-    for key in keys.iter() {
-        if !prompts.keys().any(|x| x == key) {
-            error!("({},{}) is not in {:?}", tag, key, input_specifiers);
-            return None;
-        }
-    }
-
-    if !input_specifiers.contains(&(keys[0].clone(), tag.clone())) {
-        error!("({},{}) is not in {:?}", keys[0], tag, input_specifiers);
-        return None;
-    }
-    Some((keys, tag))
+    Some(key.clone())
 }

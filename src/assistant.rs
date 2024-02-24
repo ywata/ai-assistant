@@ -26,7 +26,7 @@ use openai_api::{connect, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 
-use openai_api::scenario::{parse_cli_settings, parse_scenario, Directive, Prompt, Workflow};
+use openai_api::scenario::{parse_defined_key, parse_scenario, Directive, Prompt, Workflow};
 
 //use thiserror::Error;
 mod compile;
@@ -43,13 +43,11 @@ struct Cli {
     #[arg(long)]
     prompt_file: String,
     #[arg(long)]
-    prompt_keys: Vec<String>,
+    prompt_key: String,
     #[arg(long)]
     workflow_file: Option<String>,
     #[arg(long)]
     output_dir: String,
-    #[arg(long)]
-    tag: String,
     #[arg(long)]
     auto: Option<usize>,
     #[clap(subcommand)]
@@ -89,10 +87,9 @@ impl Default for Cli {
             config_file: "service.yaml".to_string(),
             config_key: "openai".to_string(),
             prompt_file: "prompt.txt".to_string(),
-            prompt_keys: Vec::default(),
+            prompt_key: "".to_string(),
             workflow_file: None,
             output_dir: "output".to_string(),
-            tag: "default".to_string(),
             auto: None,
             command: Commands::default(),
         }
@@ -114,8 +111,8 @@ pub fn main() -> Result<(), AssistantError> {
     } else {
         Workflow::default()
     };
-    let _given_keys = parse_cli_settings(&prompt_hash, &args.prompt_keys, &args.tag)
-        .ok_or(AssistantError::AppAccessError)?;
+    let _given_key =
+        parse_defined_key(&prompt_hash, &args.prompt_key).ok_or(AssistantError::AppAccessError)?;
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         let client: Option<CClient> = config.create_client();
@@ -452,8 +449,7 @@ impl Application for Model {
     );
 
     fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
-        let name = flags.0.prompt_keys.first().unwrap();
-        let tag = flags.0.tag.clone();
+        let name = flags.0.prompt_key.clone();
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
@@ -467,7 +463,10 @@ impl Application for Model {
         let client = flags.1.create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-        let loaded = load_data_from_prompt(flags.2.get(name).unwrap().clone(), &tag);
+        let first_prompt = flags.2.get(&name).unwrap().clone();
+        let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
+        let tag = first_prompt.inputs.first().unwrap().tag.clone();
+        let loaded = load_data_from_prompt(first_prompt, &tag);
         // Initialize EditArea with loaded input.
         let mut prefixed_text = String::from("");
         if let Some(i) = loaded {
@@ -477,7 +476,7 @@ impl Application for Model {
             connect(
                 flags.1.clone(),
                 client.unwrap(),
-                flags.0.prompt_keys.clone(),
+                assistant_names,
                 flags.2.clone(),
             ),
             Message::Connected,

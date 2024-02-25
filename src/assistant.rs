@@ -472,15 +472,21 @@ impl Application for Model {
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let mut commands: Vec<Command<Message>> = vec![Command::perform(
-            connect(
-                flags.1.clone(),
-                client.unwrap(),
-                assistant_names,
-                flags.2.clone(),
+        let mut commands: Vec<Command<Message>> = vec![
+            Command::perform(
+                load_initial_input(name.clone(), tag.clone()),
+                |(name, tag)| Message::LoadInput { name, tag },
             ),
-            Message::Connected,
-        )];
+            Command::perform(
+                connect(
+                    flags.1.clone(),
+                    client.unwrap(),
+                    assistant_names,
+                    flags.2.clone(),
+                ),
+                Message::Connected,
+            ),
+        ];
         #[cfg(feature = "load_font")]
         commands.push(
             font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
@@ -496,10 +502,7 @@ impl Application for Model {
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
                 auto: flags.0.auto,
-                conversations: vec![Talk::InputShown {
-                    name: name.clone(),
-                    message: Content::Text(prefixed_text),
-                }],
+                conversations: vec![],
                 proposal: None,
             },
             Command::<Message>::batch(commands),
@@ -754,6 +757,10 @@ impl Application for Model {
         ]
         .into()
     }
+}
+
+async fn load_initial_input(p0: String, p1: String) -> (String, String) {
+    (p0, p1)
 }
 
 fn extract_content(model: &mut Model, contents: Vec<Mark>) -> Option<Content> {

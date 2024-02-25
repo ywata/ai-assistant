@@ -123,6 +123,7 @@ pub fn main() -> Result<(), AssistantError> {
 
         Ok(Model::run(settings_default)?)
     } else {
+        error!("parse_scenario failed");
         Err(AssistantError::AppAccessError)
     }
 }

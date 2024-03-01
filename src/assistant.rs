@@ -404,7 +404,14 @@ fn load_data_from_prompt(prompt: Prompt, tag: &str) -> Option<LoadedData> {
         })
 }
 
-fn load_content(prompt: Prompt, tag: &str, text: &str) -> Option<LoadedData> {
+fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
+    let prompt = model.prompts.get(&model.current.0).unwrap().clone();
+    let text = model
+        .get_talk(|name, message| Talk::InputShown { name, message })
+        .map(|t| t.get_message().get_text())
+        .unwrap_or("".to_string());
+    let selected = model.proposal.clone().map(|p| pick_selected(&p));
+    info!("load_content(): selected:{:?}", &selected);
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
     prompt
         .inputs
@@ -558,14 +565,7 @@ impl Application for Model {
                     } => {
                         info!("PassResultTo: name:{}, tag:{}", next_name, next_tag);
 
-                        if let Some(loaded) = load_content(
-                            self.prompts.get(&next_name).unwrap().clone(),
-                            &next_tag,
-                            &self
-                                .get_talk(|name, message| Talk::ResponseShown { name, message })
-                                .map(|t| t.get_message().get_text())
-                                .unwrap_or("".to_string()),
-                        ) {
+                        if let Some(loaded) = load_content(&self, &next_tag) {
                             info!("PassResultTo: loaded:{:?}", &loaded);
                             self.put_talk(Talk::InputShown {
                                 name: next_name.clone(),
@@ -811,6 +811,18 @@ impl From<reqwest::Error> for AssistantError {
 fn button<'a>(text: &str, tag: &str) -> widget::Button<'a, Message> {
     let title = text.to_string() + ":" + tag;
     Button::new(Text::new(title))
+}
+
+fn pick_selected(resp: &HashMap<String, Vec<(String, bool)>>) -> Vec<String> {
+    let mut vec = Vec::new();
+    for (k, v) in resp.iter() {
+        for (s, b) in v.iter() {
+            if *b {
+                vec.push(s.clone());
+            }
+        }
+    }
+    vec
 }
 
 fn to_checkboxes<'a>(

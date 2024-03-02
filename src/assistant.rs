@@ -406,13 +406,17 @@ fn load_data_from_prompt(prompt: Prompt, tag: &str) -> Option<LoadedData> {
 
 fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
     let prompt = model.prompts.get(&model.current.0).unwrap().clone();
-    let text = model
+    let mut text = model
         .get_talk(|name, message| Talk::InputShown { name, message })
         .map(|t| t.get_message().get_text())
         .unwrap_or("".to_string());
-    let selected = model.proposal.clone().map(|p| pick_selected(&p));
-    info!("load_content(): selected:{:?}", &selected);
+    if let Some(selected) = model.proposal.clone().map(|p| pick_selected(&p)) {
+        info!("load_content(): selected:{:?}", &selected);
+        text = selected.join("\n");
+    }
+
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
+
     prompt
         .inputs
         .iter()
@@ -567,9 +571,13 @@ impl Application for Model {
 
                         if let Some(loaded) = load_content(&self, &next_tag) {
                             info!("PassResultTo: loaded:{:?}", &loaded);
+                            let input = loaded.input.clone();
+                            let prefix = loaded.prefix.clone();
+                            let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
+
                             self.put_talk(Talk::InputShown {
                                 name: next_name.clone(),
-                                message: Content::Text(loaded.input.clone()),
+                                message: Content::Text(prefixed_text.clone()),
                             });
                             next_current = Some((next_name, next_tag));
                             do_next = true;

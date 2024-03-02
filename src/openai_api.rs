@@ -9,6 +9,7 @@ use async_openai::{
     Client,
 };
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use tokio::sync::Mutex;
 
 pub mod scenario;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum OpenAi {
     OpenAiToken {
         token: String,
@@ -32,6 +33,26 @@ pub enum OpenAi {
         deployment_id: String,
         api_version: String,
     },
+}
+
+impl Debug for OpenAi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenAi::OpenAiToken { token, model } => {
+                write!(f, "OpenAiToken {{ token: **** model: {} }}", model)
+            }
+            OpenAi::AzureAiToken {
+                key,
+                endpoint,
+                deployment_id,
+                api_version,
+            } => write!(
+                f,
+                "AzureAiToken {{ key: ****, endpoint: {}, deployment_id: {}, api_version: {} }}",
+                endpoint, deployment_id, api_version
+            ),
+        }
+    }
 }
 
 impl OpenAi {

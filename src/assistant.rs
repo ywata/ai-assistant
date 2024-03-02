@@ -482,7 +482,7 @@ impl Application for Model {
         if let Some(i) = loaded {
             prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
         }
-        let mut commands: Vec<Command<Message>> = vec![
+        let commands: Vec<Command<Message>> = vec![
             Command::perform(
                 load_initial_input(name.clone(), tag.clone()),
                 |(name, tag)| Message::LoadInput { name, tag },
@@ -822,7 +822,7 @@ fn button<'a>(text: &str, tag: &str) -> widget::Button<'a, Message> {
 
 fn pick_selected(resp: &HashMap<String, Vec<(String, bool)>>) -> Vec<String> {
     let mut vec = Vec::new();
-    for (k, v) in resp.iter() {
+    for (_k, v) in resp.iter() {
         for (s, b) in v.iter() {
             if *b {
                 vec.push(s.clone());

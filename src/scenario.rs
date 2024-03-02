@@ -35,8 +35,15 @@ impl Prompt {
 //#[serde(untagged)]
 pub enum Directive {
     KeepAsIs,
-    PassResultTo { name: String, tag: String },
-    JumpTo { name: String, tag: String },
+    PassResultTo {
+        name: String,
+        tag: String,
+        concatp: Option<bool>,
+    },
+    JumpTo {
+        name: String,
+        tag: String,
+    },
     Stop,
 }
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -62,7 +69,7 @@ fn list_workflow_inputs(workflow: &Workflow) -> Vec<(String, String)> {
     for (_name, directives) in workflow.workflow.iter() {
         for (_person, directive) in directives.iter() {
             match directive {
-                Directive::PassResultTo { name, tag } => {
+                Directive::PassResultTo { name, tag, .. } => {
                     vec.push((name.clone(), tag.clone()));
                 }
                 Directive::JumpTo { name, tag } => {

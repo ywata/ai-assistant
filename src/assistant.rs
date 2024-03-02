@@ -566,6 +566,7 @@ impl Application for Model {
                     Directive::PassResultTo {
                         name: next_name,
                         tag: next_tag,
+                        ..
                     } => {
                         info!("PassResultTo: name:{}, tag:{}", next_name, next_tag);
 

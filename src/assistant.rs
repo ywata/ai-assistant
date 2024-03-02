@@ -163,7 +163,6 @@ enum Message {
 
 #[derive(Debug)]
 struct EditArea {
-    path: Option<PathBuf>,
     content: text_editor::Content,
     is_dirty: bool,
     is_loading: bool,
@@ -172,7 +171,6 @@ struct EditArea {
 impl Default for EditArea {
     fn default() -> Self {
         EditArea {
-            path: None,
             content: text_editor::Content::new(),
             is_dirty: false,
             is_loading: false,
@@ -566,7 +564,6 @@ impl Application for Model {
                     Directive::PassResultTo {
                         name: next_name,
                         tag: next_tag,
-                        ..
                     } => {
                         info!("PassResultTo: name:{}, tag:{}", next_name, next_tag);
 

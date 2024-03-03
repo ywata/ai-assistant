@@ -1062,6 +1062,18 @@ xyzw
                !PassResultTo
                name: name2
                tag: tag2
+          name3:
+             tag3:
+               !PassResultTo
+               name: name2
+               tag: tag2
+               concatp: true
+          name4:
+             tag2:
+               !PassResultTo
+               name: name2
+               tag: tag2
+               concatp: false
         "#
         .to_string();
         let workflow: Result<Workflow, _> = read_config(None, &workflow_content);
@@ -1082,7 +1094,24 @@ xyzw
             workflow.get_directive("name2", "tag3"),
             Directive::PassResultTo {
                 name: "name2".to_string(),
-                tag: "tag2".to_string()
+                tag: "tag2".to_string(),
+                concatp: None
+            }
+        );
+        assert_eq!(
+            workflow.get_directive("name3", "tag3"),
+            Directive::PassResultTo {
+                name: "name2".to_string(),
+                tag: "tag2".to_string(),
+                concatp: Some(true)
+            }
+        );
+        assert_eq!(
+            workflow.get_directive("name4", "tag2"),
+            Directive::PassResultTo {
+                name: "name2".to_string(),
+                tag: "tag2".to_string(),
+                concatp: Some(false)
             }
         );
     }

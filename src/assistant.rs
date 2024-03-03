@@ -1,8 +1,10 @@
 use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
@@ -185,7 +187,7 @@ enum AreaIndex {
     Result = 2,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 enum Content {
     Text(String),
     Json(String),
@@ -226,7 +228,7 @@ impl Model {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Talk {
     InputShown {
         name: AssistantName,
@@ -684,10 +686,13 @@ impl Application for Model {
             }
 
             Message::SaveConversation { outut_dir } => {
-                let context = self.context.clone().unwrap();
-                let _handle = tokio::spawn(async move {
-                    let _ctx = context.lock().await;
+                let convs = self.conversations.clone();
+                let output_dir_path = PathBuf::from(outut_dir);
+                let _ = serde_yaml::to_string(&convs).map(|s| {
+                    let output_path = output_dir_path.join("conversation.yaml");
+                    fs::write(output_path, s)
                 });
+
                 Command::none()
             }
             Message::FontLoaded(_) => Command::none(),

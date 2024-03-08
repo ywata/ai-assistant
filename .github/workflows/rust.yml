@@ -44,5 +44,7 @@ jobs:
       run: cargo build --verbose
     - name: Build for Azure
       run: cargo build --verbose --features azure_ai
-    - name: Run tests
+    - name: Run tests for OpenAI
       run: cargo test --verbose
+    - name: Run tests for Azure
+      run: cargo test --verbose --features azure_ai

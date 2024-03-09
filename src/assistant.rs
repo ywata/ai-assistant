@@ -4,7 +4,7 @@ use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Deref;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};

@@ -35,15 +35,8 @@ impl Prompt {
 //#[serde(untagged)]
 pub enum Directive {
     KeepAsIs,
-    PassResultTo {
-        name: String,
-        tag: String,
-        concatp: Option<bool>,
-    },
-    JumpTo {
-        name: String,
-        tag: String,
-    },
+    PassResultTo { name: String, tag: String },
+    JumpTo { name: String, tag: String },
     Stop,
 }
 #[derive(Clone, Debug, Deserialize, Default)]

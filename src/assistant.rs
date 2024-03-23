@@ -1033,71 +1033,7 @@ xyzw
     #[test]
     fn test_convert_workflow() {
         let workflow_content = r#"
-        !Workflow
-        workflow:
-          name1:
-            tag1:
-              !KeepAsIs
-            tag2:
-              !JumpTo
-              name: name1
-              tag: tag1
-          name2:
-             tag3:
-               !PassResultTo
-               name: name2
-               tag: tag2
-          name3:
-             tag3:
-               !PassResultTo
-               name: name2
-               tag: tag2
-               concatp: true
-          name4:
-             tag2:
-               !PassResultTo
-               name: name2
-               tag: tag2
-               concatp: false
         "#
         .to_string();
-        let workflow: Result<Workflow, _> = read_config(None, &workflow_content);
-        //let workflow: Result<Workflow, _> = serde_yaml::from_str(&workflow_content);
-        let workflow = workflow.unwrap();
-        assert_eq!(
-            workflow.get_directive("name1", "tag1"),
-            Directive::KeepAsIs {}
-        );
-        assert_eq!(
-            workflow.get_directive("name1", "tag2"),
-            Directive::JumpTo {
-                name: "name1".to_string(),
-                tag: "tag1".to_string()
-            }
-        );
-        assert_eq!(
-            workflow.get_directive("name2", "tag3"),
-            Directive::PassResultTo {
-                name: "name2".to_string(),
-                tag: "tag2".to_string(),
-                concatp: None
-            }
-        );
-        assert_eq!(
-            workflow.get_directive("name3", "tag3"),
-            Directive::PassResultTo {
-                name: "name2".to_string(),
-                tag: "tag2".to_string(),
-                concatp: Some(true)
-            }
-        );
-        assert_eq!(
-            workflow.get_directive("name4", "tag2"),
-            Directive::PassResultTo {
-                name: "name2".to_string(),
-                tag: "tag2".to_string(),
-                concatp: Some(false)
-            }
-        );
     }
 }

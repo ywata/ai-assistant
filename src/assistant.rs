@@ -216,30 +216,6 @@ impl Content {
     }
 }
 
-impl Model {
-    fn set_proposal(&mut self, content: Content) {
-        self.proposal = match content {
-            Content::Json(prop) => {
-                let prop = serde_json::from_str::<HashMap<String, Vec<String>>>(&prop)
-                    .map(|hmap| {
-                        hmap.iter()
-                            .map(|(k, v)| {
-                                let mut vec = Vec::new();
-                                for i in v {
-                                    vec.push((i.clone(), false));
-                                }
-                                (k.clone(), vec)
-                            })
-                            .collect()
-                    })
-                    .ok();
-                prop
-            }
-            _ => None,
-        };
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Talk {
     InputShown {
@@ -290,7 +266,6 @@ impl Renderer<(), String> for R {
     }
 }
 
-#[derive(Debug)]
 struct Model {
     env: Cli,
     prompts: HashMap<String, Prompt>,
@@ -344,6 +319,28 @@ impl Model {
             }
         }
         None
+    }
+
+    fn set_proposal(&mut self, content: Content) {
+        self.proposal = match content {
+            Content::Json(prop) => {
+                let prop = serde_json::from_str::<HashMap<String, Vec<String>>>(&prop)
+                    .map(|hmap| {
+                        hmap.iter()
+                            .map(|(k, v)| {
+                                let mut vec = Vec::new();
+                                for i in v {
+                                    vec.push((i.clone(), false));
+                                }
+                                (k.clone(), vec)
+                            })
+                            .collect()
+                    })
+                    .ok();
+                prop
+            }
+            _ => None,
+        };
     }
 }
 

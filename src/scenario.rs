@@ -59,7 +59,7 @@ where
     _s: PhantomData<S>,
     #[serde(skip)]
     _t: PhantomData<T>,
-    trans: StateTrans,
+    next: StateTrans,
     request: Box<I>,
     response: Box<O>,
 }
@@ -75,7 +75,7 @@ where
         Item {
             _s: PhantomData,
             _t: PhantomData,
-            trans: self.trans.clone(),
+            next: self.next.clone(),
             request: self.request.clone(),
             response: self.response.clone(),
         }

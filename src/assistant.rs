@@ -1061,14 +1061,14 @@ xyzw
         workflow:
           king:
             k11:
-              trans: !Stop
+              next: !Stop
               request:
                 name: "asdf"
               response:
                 name: ";asdf"
           queen:
             q11:
-              trans: !Next
+              next: !Next
                 name: king
                 tag: k11
               request:

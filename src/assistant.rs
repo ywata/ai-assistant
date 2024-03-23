@@ -1,9 +1,13 @@
+use crate::scenario::Prompt;
+use crate::scenario::Renderer;
+use crate::scenario::Workflow;
 use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,11 +32,11 @@ use openai_api::{connect, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
 
-use openai_api::scenario::{parse_defined_key, parse_scenario, Directive, Prompt, Workflow};
-
 //use thiserror::Error;
 mod compile;
-pub mod config;
+mod config;
+mod openai_api;
+mod scenario;
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -83,6 +87,16 @@ impl Cli {
     }
 }
 
+fn parse_scenario(
+    prompt_hash: HashMap<String, Prompt>,
+    wf: Workflow<(), String, R, R>,
+) -> Option<(HashMap<String, Prompt>, Workflow<(), String, R, R>)> {
+    if prompt_hash.is_empty() {
+        return None;
+    }
+    Some((prompt_hash, wf))
+}
+
 impl Default for Cli {
     fn default() -> Self {
         Cli {
@@ -109,12 +123,10 @@ pub fn main() -> Result<(), AssistantError> {
     let _markers = args.get_markers()?;
     let wf = if let Some(ref file) = &args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
-        config::read_config(None, &workflow_content)?
+        crate::config::read_config(None, &workflow_content)?
     } else {
         Workflow::default()
     };
-    let _given_key =
-        parse_defined_key(&prompt_hash, &args.prompt_key).ok_or(AssistantError::AppAccessError)?;
 
     if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
         let client: Option<CClient> = config.create_client();
@@ -269,10 +281,19 @@ impl Talk {
     }
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct R {}
+
+impl Renderer<(), String> for R {
+    fn render(_model: &()) -> String {
+        "".to_string()
+    }
+}
+
 #[derive(Debug)]
 struct Model {
     env: Cli,
-    prompts: HashMap<String, openai_api::scenario::Prompt>,
+    prompts: HashMap<String, Prompt>,
     context: Option<Arc<Mutex<Context>>>,
     conversations: Vec<Talk>,
     // edit_area contaiins current view of conversation,
@@ -281,7 +302,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow,
+    workflow: Workflow<(), String, R, R>,
     auto: Option<usize>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
@@ -454,8 +475,8 @@ impl Application for Model {
     type Flags = (
         Cli,
         OpenAi,
-        HashMap<String, openai_api::scenario::Prompt>,
-        Workflow,
+        HashMap<String, Prompt>,
+        Workflow<(), String, R, R>,
         Option<usize>,
         Option<CClient>,
     );
@@ -544,47 +565,9 @@ impl Application for Model {
                 let wf = &self.workflow;
 
                 let mut do_next = false;
+                let next_name = current.0.clone();
+                let next_tag = current.1.clone();
 
-                match wf.get_directive(&current.0, &current.1) {
-                    Directive::KeepAsIs => (),
-                    Directive::Stop => (),
-
-                    Directive::JumpTo {
-                        name: next_name,
-                        tag: next_tag,
-                    } => {
-                        info!("JumpTo: name:{}, tag:{}", next_name, next_tag);
-                        let loaded = load_data_from_prompt(
-                            self.prompts.get(&next_name).unwrap().clone(),
-                            &next_tag,
-                        );
-                        if let Some(_) = loaded {
-                            do_next = true;
-                            next_current = Some((next_name.clone(), next_tag.clone()));
-                        }
-                    }
-                    Directive::PassResultTo {
-                        name: next_name,
-                        tag: next_tag,
-                        ..
-                    } => {
-                        info!("PassResultTo: name:{}, tag:{}", next_name, next_tag);
-
-                        if let Some(loaded) = load_content(&self, &next_tag) {
-                            info!("PassResultTo: loaded:{:?}", &loaded);
-                            let input = loaded.input.clone();
-                            let prefix = loaded.prefix.clone();
-                            let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-
-                            self.put_talk(Talk::InputShown {
-                                name: next_name.clone(),
-                                message: Content::Text(prefixed_text.clone()),
-                            });
-                            next_current = Some((next_name, next_tag));
-                            do_next = true;
-                        }
-                    }
-                };
                 Command::none()
             }
 

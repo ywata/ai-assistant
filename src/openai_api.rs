@@ -13,13 +13,10 @@ use std::fmt::Debug;
 
 use std::sync::Arc;
 
-use crate::scenario::Prompt;
 use crate::OpenAIApiError::OpenAIAccessError;
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-
-pub mod scenario;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum OpenAi {
@@ -113,7 +110,7 @@ pub async fn connect(
     config: OpenAi,
     client: CClient,
     names: Vec<String>,
-    prompts: HashMap<String, Prompt>,
+    prompts: HashMap<String, crate::scenario::Prompt>,
 ) -> Result<Context, OpenAIApiError> {
     let mut context: Context = Context::new(client);
     let mut connection_setupped = false;

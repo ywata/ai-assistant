@@ -29,7 +29,7 @@ pub trait ReadFromEnv<T: for<'a> Deserialize<'a> + Clone> {
     fn read_from_env(key: &str) -> Result<T, ConfigError>;
 }
 
-pub fn convert<T: for<'a> Deserialize<'a> + Clone + std::fmt::Debug>(
+pub fn convert<T: for<'a> Deserialize<'a> + Clone + Debug>(
     key: Option<&String>,
     yaml_string: &str,
 ) -> Result<T, ConfigError> {
@@ -48,7 +48,7 @@ pub fn convert<T: for<'a> Deserialize<'a> + Clone + std::fmt::Debug>(
     }
 }
 
-pub fn read_config<T: for<'a> Deserialize<'a> + Clone + std::fmt::Debug>(
+pub fn read_config<T: for<'a> Deserialize<'a> + Clone + Debug>(
     key: Option<&String>,
     contents: &str,
 ) -> Result<T, ConfigError> {

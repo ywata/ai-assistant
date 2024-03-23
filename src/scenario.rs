@@ -52,8 +52,8 @@ pub struct Item<S, T, I, O>
 where
     S: Debug,
     T: Debug,
-    I: Renderer<S, T> + Clone + Debug + Default,
-    O: Renderer<S, T> + Clone + Debug + Default,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
 {
     #[serde(skip)]
     _s: PhantomData<S>,
@@ -68,8 +68,8 @@ impl<S, T, I, O> Clone for Item<S, T, I, O>
 where
     S: Debug,
     T: Debug,
-    I: Renderer<S, T> + Clone + Debug + Default,
-    O: Renderer<S, T> + Clone + Debug + Default,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
 {
     fn clone(&self) -> Self {
         Item {
@@ -86,8 +86,8 @@ pub struct Workflow<S, T, I, O>
 where
     S: Debug,
     T: Debug,
-    I: Renderer<S, T> + Clone + Debug + Default,
-    O: Renderer<S, T> + Clone + Debug + Default,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
 {
     pub workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
 }
@@ -96,8 +96,8 @@ impl<S, T, I, O> Workflow<S, T, I, O>
 where
     S: Debug,
     T: Clone + Debug,
-    I: Renderer<S, T> + Clone + Debug + Default,
-    O: Renderer<S, T> + Clone + Debug + Default,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
 {
     pub fn new(workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>) -> Self {
         Workflow { workflow }

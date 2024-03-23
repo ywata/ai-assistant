@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use strum_macros::{Display, EnumIter, EnumString};
 use thiserror::Error;
 
-#[derive(Error, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Deserialize, Debug, Error, PartialEq)]
 pub enum ConfigError {
     #[error("unexpected entry in template")]
     UnexpectedKey,
@@ -37,6 +37,7 @@ pub fn convert<T: for<'a> Deserialize<'a> + Clone + Debug>(
         None => {
             let config = serde_yaml::from_str(yaml_string);
             debug!("{:?}", &config);
+            println!("{:?}", &config);
             config.map_err(|_| ConversionFailed)
         }
         Some(key) => {

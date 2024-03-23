@@ -31,7 +31,7 @@ impl Prompt {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-enum StateTrans {
+pub enum StateTrans {
     #[default]
     Stop,
     Next {
@@ -89,7 +89,7 @@ where
     I: Renderer<S, T> + Clone + Debug + Default,
     O: Renderer<S, T> + Clone + Debug + Default,
 {
-    workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
+    pub workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
 }
 
 impl<S, T, I, O> Workflow<S, T, I, O>

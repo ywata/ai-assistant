@@ -1030,10 +1030,56 @@ xyzw
         assert_eq!(prompt.instruction, "asdf\nasdf\n".to_string());
     }
 
+    #[derive(Clone, Debug, Default, Deserialize)]
+    struct T {
+        name: String,
+    }
+    impl Renderer<Vec<Talk>, String> for T {
+        fn render(_talks: &Vec<Talk>) -> String {
+            "".to_string()
+        }
+    }
+    #[derive(Clone, Debug, Deserialize)]
+    enum S {
+        S1,
+        S2(String),
+        S3 { name: String },
+    }
+    impl Renderer<Vec<Talk>, String> for S {
+        fn render(_talks: &Vec<Talk>) -> String {
+            "".to_string()
+        }
+    }
+    impl Default for S {
+        fn default() -> Self {
+            S::S1
+        }
+    }
     #[test]
     fn test_convert_workflow() {
         let workflow_content = r#"
+        workflow:
+          king:
+            k11:
+              trans: !Stop
+              request:
+                name: "asdf"
+              response:
+                name: ";asdf"
+          queen:
+            q11:
+              trans: !Next
+                name: king
+                tag: k11
+              request:
+                name: request
+              response:
+                name: response
         "#
         .to_string();
+        let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_content).unwrap();
+
+        assert_eq!(wf.workflow.len(), 2);
+        assert_eq!(wf.workflow.get("king").unwrap().len(), 1);
     }
 }

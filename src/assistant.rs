@@ -89,8 +89,8 @@ impl Cli {
 
 fn parse_scenario(
     prompt_hash: HashMap<String, Prompt>,
-    wf: Workflow<(), String, R, R>,
-) -> Option<(HashMap<String, Prompt>, Workflow<(), String, R, R>)> {
+    wf: Workflow<Vec<Talk>, String, R, R>,
+) -> Option<(HashMap<String, Prompt>, Workflow<Vec<Talk>, String, R, R>)> {
     if prompt_hash.is_empty() {
         return None;
     }
@@ -260,8 +260,8 @@ impl Talk {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct R {}
 
-impl Renderer<(), String> for R {
-    fn render(_model: &()) -> String {
+impl Renderer<Vec<Talk>, String> for R {
+    fn render(_talks: &Vec<Talk>) -> String {
         "".to_string()
     }
 }
@@ -277,7 +277,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow<(), String, R, R>,
+    workflow: Workflow<Vec<Talk>, String, R, R>,
     auto: Option<usize>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
@@ -473,7 +473,7 @@ impl Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Prompt>,
-        Workflow<(), String, R, R>,
+        Workflow<Vec<Talk>, String, R, R>,
         Option<usize>,
         Option<CClient>,
     );

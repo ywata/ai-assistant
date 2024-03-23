@@ -56,9 +56,9 @@ where
     O: Renderer<S, T> + Clone + Debug + Default,
 {
     #[serde(skip)]
-    phantom_s: PhantomData<S>,
+    _s: PhantomData<S>,
     #[serde(skip)]
-    phantom_t: PhantomData<T>,
+    _t: PhantomData<T>,
     trans: StateTrans,
     request: Box<I>,
     response: Box<O>,
@@ -73,8 +73,8 @@ where
 {
     fn clone(&self) -> Self {
         Item {
-            phantom_s: PhantomData,
-            phantom_t: PhantomData,
+            _s: PhantomData,
+            _t: PhantomData,
             trans: self.trans.clone(),
             request: self.request.clone(),
             response: self.response.clone(),
@@ -89,10 +89,6 @@ where
     I: Renderer<S, T> + Clone + Debug + Default,
     O: Renderer<S, T> + Clone + Debug + Default,
 {
-    #[serde(skip)]
-    phantom_s: PhantomData<S>,
-    #[serde(skip)]
-    phantom_t: PhantomData<T>,
     workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
 }
 
@@ -104,11 +100,7 @@ where
     O: Renderer<S, T> + Clone + Debug + Default,
 {
     pub fn new(workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>) -> Self {
-        Workflow {
-            phantom_s: PhantomData,
-            phantom_t: PhantomData,
-            workflow,
-        }
+        Workflow { workflow }
     }
 }
 

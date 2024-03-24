@@ -5,7 +5,7 @@ use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -87,14 +87,37 @@ impl Cli {
     }
 }
 
-fn parse_scenario(
-    prompt_hash: HashMap<String, Prompt>,
-    wf: Workflow<Vec<Talk>, String, R, R>,
-) -> Option<(HashMap<String, Prompt>, Workflow<Vec<Talk>, String, R, R>)> {
-    if prompt_hash.is_empty() {
+fn parse_scenario<S, T, I, O>(
+    prompts: HashMap<String, Prompt>,
+    wf: Workflow<S, T, I, O>,
+) -> Option<(HashMap<String, Prompt>, Workflow<S, T, I, O>)>
+where
+    S: Debug,
+    T: Debug,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
+{
+    if prompts.is_empty() {
         return None;
     }
-    Some((prompt_hash, wf))
+    let prompt_pairs: HashSet<(String, String)> = prompts
+        .iter()
+        .map(|(n, p)| p.inputs.iter().map(|i| (n.clone(), i.tag.clone())))
+        .flatten()
+        .collect();
+    let wf_pairs: HashSet<(String, String)> = wf
+        .workflow
+        .iter()
+        .map(|(n, hm)| hm.iter().map(|(t, _itm)| (n.clone(), t.clone())))
+        .flatten()
+        .collect();
+    if prompt_pairs.eq(&wf_pairs) {
+        Some((prompts, wf))
+    } else {
+        println!("{:?}", prompt_pairs);
+        println!("{:?}", wf_pairs);
+        None
+    }
 }
 
 impl Default for Cli {
@@ -119,7 +142,7 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompt_hash: HashMap<String, Prompt> = config::read_config(None, &prompt_content)?;
+    let prompt_hash: Box<HashMap<String, Prompt>> = config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
     let wf = if let Some(ref file) = &args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
@@ -128,7 +151,7 @@ pub fn main() -> Result<(), AssistantError> {
         Workflow::default()
     };
 
-    if let Some((prompts, workflow)) = parse_scenario(prompt_hash, wf) {
+    if let Some((prompts, workflow)) = parse_scenario(*prompt_hash, wf) {
         let client: Option<CClient> = config.create_client();
         let settings_default = Settings {
             flags: (args.clone(), config, prompts, workflow, args.auto, client),
@@ -258,9 +281,21 @@ impl Talk {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct R {}
+struct Request {
+    template_path: String,
+}
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct Response {
+    template_path: String,
+}
 
-impl Renderer<Vec<Talk>, String> for R {
+impl Renderer<Vec<Talk>, String> for Request {
+    fn render(_talks: &Vec<Talk>) -> String {
+        "".to_string()
+    }
+}
+
+impl Renderer<Vec<Talk>, String> for Response {
     fn render(_talks: &Vec<Talk>) -> String {
         "".to_string()
     }
@@ -277,7 +312,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow<Vec<Talk>, String, R, R>,
+    workflow: Workflow<Vec<Talk>, String, Request, Response>,
     auto: Option<usize>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
@@ -473,7 +508,7 @@ impl Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Prompt>,
-        Workflow<Vec<Talk>, String, R, R>,
+        Workflow<Vec<Talk>, String, Request, Response>,
         Option<usize>,
         Option<CClient>,
     );
@@ -1081,5 +1116,59 @@ xyzw
 
         assert_eq!(wf.workflow.len(), 2);
         assert_eq!(wf.workflow.get("king").unwrap().len(), 1);
+    }
+    #[test]
+    fn test_parse_scenario() {
+        let prompt_str = r#"
+king:
+  instruction: |
+    This is instruction for king
+  inputs:
+    - tag: k1
+      prefix: k1_prefix
+      text: input for king_k1
+    - tag: k2
+      text: input for king_k2
+queen:
+  instruction: Queen's instruction
+  inputs:
+    - tag: q1
+      prefix: q1_prefix
+      text: input for queen_q1
+    - tag: q2
+      text: input for queen_q2
+        "#;
+        let prompts: HashMap<String, Prompt> = read_config(None, &prompt_str).unwrap();
+        let workflow_str = r#"
+workflow:
+  king:
+    k1:
+      next: !Stop
+      request:
+        name: asdf
+      response:
+        name: sdfg
+    k2:
+      next: !Stop
+      request:
+        name: asdf
+      response:
+        name: sdfa
+  queen:
+    q1:
+      next: !Stop
+      request:
+        name: asdf
+      response:
+        name: adsf
+    q2:
+      next: !Stop
+      request:
+        name: adsf
+      response:
+        name: asdf
+        "#;
+        let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_str).unwrap();
+        let (p, wf) = parse_scenario(prompts, wf).unwrap();
     }
 }

@@ -103,13 +103,3 @@ where
         Workflow { workflow }
     }
 }
-
-fn list_input_identifier(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
-    let mut vec = Vec::new();
-    for (name, prompt) in prompts.iter() {
-        for input in prompt.inputs.iter() {
-            vec.push((name.clone(), input.tag.clone()));
-        }
-    }
-    vec
-}

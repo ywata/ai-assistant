@@ -7,7 +7,6 @@ use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -534,10 +533,7 @@ impl Application for Model {
         let loaded = load_data_from_prompt(first_prompt, &tag);
         // Initialize EditArea with loaded input.
         let mut prefixed_text = String::from("");
-        if let Some(i) = loaded {
-            prefixed_text = i.prefix.unwrap_or_default() + "\n" + &i.input;
-        }
-        let commands: Vec<Command<Message>> = vec![
+        let mut commands: Vec<Command<Message>> = vec![
             Command::perform(
                 load_initial_input(name.clone(), tag.clone()),
                 |(name, tag)| Message::LoadInput { name, tag },
@@ -594,11 +590,6 @@ impl Application for Model {
             Message::NextWorkflow { auto } => {
                 let current = self.current.clone();
                 info!("NextWorkflow:current {:?}", current.clone());
-                let wf = &self.workflow;
-
-                let mut do_next = false;
-                let next_name = current.0.clone();
-                let next_tag = current.1.clone();
 
                 Command::none()
             }

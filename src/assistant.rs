@@ -56,8 +56,6 @@ struct Cli {
     workflow_file: Option<String>,
     #[arg(long)]
     output_dir: String,
-    #[arg(long)]
-    auto: Option<usize>,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -98,7 +96,6 @@ impl Default for Cli {
             prompt_key: "".to_string(),
             workflow_file: None,
             output_dir: "output".to_string(),
-            auto: None,
             command: Commands::default(),
         }
     }
@@ -126,7 +123,7 @@ pub fn main() -> Result<(), AssistantError> {
         debug!("{:?}", workflow);
         let client: Option<CClient> = config.create_client();
         let settings_default = Settings {
-            flags: (args.clone(), config, prompts, workflow, args.auto, client),
+            flags: (args.clone(), config, prompts, workflow, client),
             ..Default::default()
         };
 
@@ -327,27 +324,10 @@ struct Model {
     edit_areas: Vec<EditArea>,
     current: (String, String),
     workflow: Workflow<Vec<Talk>, String, Request, Response>,
-    auto: Option<usize>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
 
 impl Model {
-    fn dec_auto(&mut self) {
-        if let Some(auto) = self.auto {
-            if auto > 0 {
-                info!("dec_auto(): {:?}", &self.auto);
-                self.auto = Some(auto - 1);
-            }
-        }
-    }
-    fn auto_enabled(&self) -> bool {
-        if let Some(auto) = self.auto {
-            if auto > 0 {
-                return true;
-            }
-        }
-        false
-    }
     fn push_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
     }
@@ -527,7 +507,6 @@ impl Application for Model {
         OpenAi,
         HashMap<String, Box<Prompt>>,
         Workflow<Vec<Talk>, String, Request, Response>,
-        Option<usize>,
         Option<CClient>,
     );
 
@@ -581,7 +560,6 @@ impl Application for Model {
                 edit_areas: vec![prompt, input, result],
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
-                auto: flags.0.auto,
                 conversations: vec![],
                 proposal: None,
             },
@@ -654,7 +632,6 @@ impl Application for Model {
                 }
             }
             Message::Answered { answer, auto } => {
-                self.dec_auto();
                 self.proposal = None;
 
                 let command = Command::none();
@@ -685,14 +662,7 @@ impl Application for Model {
                     }
                     _ => error!("FAILED"),
                 }
-
-                if auto {
-                    self.update(Message::NextWorkflow {
-                        auto: self.auto_enabled(),
-                    })
-                } else {
-                    command
-                }
+                command
             }
             Message::Compiled(msg) => {
                 debug!("{:?}", msg);
@@ -765,18 +735,11 @@ impl Application for Model {
                         .into())),
                 row![
                     horizontal_space(),
-                    button("Next", "").on_press(Message::NextWorkflow {
-                        auto: self.auto_enabled()
-                    }),
+                    button("Next", "").on_press(Message::NextWorkflow { auto: false }),
                     button("Ask AI", "").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
                         auto: false,
-                    }),
-                    button("auto", "").on_press(Message::QueryAi {
-                        name: self.current.0.clone(),
-                        tag: self.current.1.clone(),
-                        auto: true,
                     }),
                     button("save", "").on_press(Message::SaveConversation {
                         outut_dir: self.env.output_dir.clone(),

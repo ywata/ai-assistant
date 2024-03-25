@@ -41,9 +41,6 @@ pub enum StateTrans {
     },
 }
 
-pub enum Directive {
-    KeepAsIs,
-}
 pub trait Renderer<S, T> {
     fn render(state: &S) -> T;
 }

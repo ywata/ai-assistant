@@ -1,3 +1,6 @@
+use crate::response_content::get_content;
+use crate::response_content::split_code;
+use crate::response_content::Mark;
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
 use crate::scenario::Workflow;
@@ -38,6 +41,7 @@ use crate::compile::compile;
 mod compile;
 mod config;
 mod openai_api;
+mod response_content;
 mod scenario;
 
 #[derive(Clone, Debug, Parser)]
@@ -479,17 +483,6 @@ fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
         })
 }
 
-fn get_content(contents: Vec<Mark>) -> Option<Mark> {
-    let mut res = None;
-    for c in contents {
-        if let Mark::Content { .. } = c {
-            res = Some(c);
-            break;
-        }
-    }
-    res
-}
-
 fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
     area[idx as usize] = EditArea {
@@ -844,58 +837,6 @@ fn to_checkboxes<'a>(
         }
     }
     col
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum Mark {
-    Marker { text: String, lang: Option<String> },
-    Content { text: String, lang: Option<String> },
-}
-
-fn split_code(source: &str, markers: &Vec<regex::Regex>) -> Vec<Mark> {
-    let mut curr_pos: usize = 0; // index to source
-    let max = source.len();
-    let mut result = Vec::new();
-    let mut lang = None;
-    for marker in markers {
-        // source is searched starting from curr_pos to max
-        if let Some(matched) = marker.captures(&source[curr_pos..max]) {
-            let all_matched = matched.get(0).unwrap();
-
-            let pos = all_matched.range().start; // position in [curr..pos.. <max]
-            if 0 != pos {
-                // As there is some text before marker, it becomes Content
-                result.push(Mark::Content {
-                    text: String::from(&source[curr_pos..(curr_pos + pos)]),
-                    lang: lang.clone(),
-                });
-                curr_pos += pos;
-            }
-            lang = matched.get(1).map(|m| {
-                String::from(
-                    &source[curr_pos + m.range().start - pos..(curr_pos + m.range().end - pos)],
-                )
-            });
-            let r = all_matched.range();
-            let len = r.end - r.start;
-
-            result.push(Mark::Marker {
-                text: String::from(&source[curr_pos..curr_pos + len]),
-                lang: lang.clone(),
-            });
-            curr_pos += len;
-        } else {
-            // not marker found. This might be a error.
-        }
-    }
-    if curr_pos < max {
-        result.push(Mark::Content {
-            text: String::from(&source[curr_pos..max]),
-            lang: lang.clone(),
-        });
-    }
-
-    result
 }
 
 #[cfg(test)]

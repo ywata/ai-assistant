@@ -87,9 +87,9 @@ impl Cli {
 }
 
 fn parse_scenario<S, T, I, O>(
-    prompts: HashMap<String, Prompt>,
+    prompts: HashMap<String, Box<Prompt>>,
     wf: Workflow<S, T, I, O>,
-) -> Option<(HashMap<String, Prompt>, Workflow<S, T, I, O>)>
+) -> Option<(HashMap<String, Box<Prompt>>, Workflow<S, T, I, O>)>
 where
     S: Debug,
     T: Debug,
@@ -141,7 +141,8 @@ pub fn main() -> Result<(), AssistantError> {
     let config_content = fs::read_to_string(&args.config_file)?;
     let config: OpenAi = config::read_config(Some(&args.config_key), &config_content)?;
     let prompt_content = fs::read_to_string(&args.prompt_file)?;
-    let prompt_hash: Box<HashMap<String, Prompt>> = config::read_config(None, &prompt_content)?;
+    let prompt_hash: Box<HashMap<String, Box<Prompt>>> =
+        config::read_config(None, &prompt_content)?;
     let _markers = args.get_markers()?;
     let wf = if let Some(ref file) = &args.workflow_file {
         let workflow_content = fs::read_to_string(file)?;
@@ -302,7 +303,7 @@ impl Renderer<Vec<Talk>, String> for Response {
 
 struct Model {
     env: Cli,
-    prompts: HashMap<String, Prompt>,
+    prompts: HashMap<String, Box<Prompt>>,
     context: Option<Arc<Mutex<Context>>>,
     conversations: Vec<Talk>,
     // edit_area contaiins current view of conversation,
@@ -506,7 +507,7 @@ impl Application for Model {
     type Flags = (
         Cli,
         OpenAi,
-        HashMap<String, Prompt>,
+        HashMap<String, Box<Prompt>>,
         Workflow<Vec<Talk>, String, Request, Response>,
         Option<usize>,
         Option<CClient>,
@@ -530,7 +531,7 @@ impl Application for Model {
         let first_prompt = flags.2.get(&name).unwrap().clone();
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
         let tag = first_prompt.inputs.first().unwrap().tag.clone();
-        let loaded = load_data_from_prompt(first_prompt, &tag);
+        let loaded = load_data_from_prompt(*first_prompt, &tag);
         // Initialize EditArea with loaded input.
         let mut prefixed_text = String::from("");
         let mut commands: Vec<Command<Message>> = vec![
@@ -600,7 +601,7 @@ impl Application for Model {
 
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let result = load_data_from_prompt(prompt, &tag)
+                let result = load_data_from_prompt(*prompt, &tag)
                     .map(|i| {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
@@ -808,7 +809,7 @@ fn extract_content(model: &mut Model, contents: Vec<Mark>) -> Option<Content> {
     }
 }
 
-fn list_inputs(prompts: &HashMap<String, Prompt>) -> Vec<(String, String)> {
+fn list_inputs(prompts: &HashMap<String, Box<Prompt>>) -> Vec<(String, String)> {
     let mut items = Vec::new();
     for k in prompts.keys() {
         for i in prompts.get(k).unwrap().inputs.iter() {

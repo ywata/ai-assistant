@@ -1,3 +1,4 @@
+use crate::Prompt;
 use async_openai::config::Config;
 use async_openai::{
     config::{AzureConfig, OpenAIConfig},
@@ -110,7 +111,7 @@ pub async fn connect(
     config: OpenAi,
     client: CClient,
     names: Vec<String>,
-    prompts: HashMap<String, crate::scenario::Prompt>,
+    prompts: HashMap<String, Box<Prompt>>,
 ) -> Result<Context, OpenAIApiError> {
     let mut context: Context = Context::new(client);
     let mut connection_setupped = false;

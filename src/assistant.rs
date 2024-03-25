@@ -1,6 +1,7 @@
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
 use crate::scenario::Workflow;
+use crate::scenario::{parse_scenario, Item};
 use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
@@ -8,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
@@ -86,39 +89,6 @@ impl Cli {
     }
 }
 
-fn parse_scenario<S, T, I, O>(
-    prompts: HashMap<String, Box<Prompt>>,
-    wf: Workflow<S, T, I, O>,
-) -> Option<(HashMap<String, Box<Prompt>>, Workflow<S, T, I, O>)>
-where
-    S: Debug,
-    T: Debug,
-    I: Renderer<S, T> + Clone + Debug,
-    O: Renderer<S, T> + Clone + Debug,
-{
-    if prompts.is_empty() {
-        return None;
-    }
-    let prompt_pairs: HashSet<(String, String)> = prompts
-        .iter()
-        .map(|(n, p)| p.inputs.iter().map(|i| (n.clone(), i.tag.clone())))
-        .flatten()
-        .collect();
-    let wf_pairs: HashSet<(String, String)> = wf
-        .workflow
-        .iter()
-        .map(|(n, hm)| hm.iter().map(|(t, _itm)| (n.clone(), t.clone())))
-        .flatten()
-        .collect();
-    if prompt_pairs.eq(&wf_pairs) {
-        Some((prompts, wf))
-    } else {
-        println!("{:?}", prompt_pairs);
-        println!("{:?}", wf_pairs);
-        None
-    }
-}
-
 impl Default for Cli {
     fn default() -> Self {
         Cli {
@@ -152,6 +122,8 @@ pub fn main() -> Result<(), AssistantError> {
     };
 
     if let Some((prompts, workflow)) = parse_scenario(*prompt_hash, wf) {
+        let workflow = load_template(workflow).unwrap();
+        debug!("{:?}", workflow);
         let client: Option<CClient> = config.create_client();
         let settings_default = Settings {
             flags: (args.clone(), config, prompts, workflow, args.auto, client),
@@ -283,10 +255,12 @@ impl Talk {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Request {
     template_path: String,
+    template: Option<String>,
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Response {
     template_path: String,
+    template: Option<String>,
 }
 
 impl Renderer<Vec<Talk>, String> for Request {
@@ -301,6 +275,40 @@ impl Renderer<Vec<Talk>, String> for Response {
     }
 }
 
+fn load_template(
+    workflow: Workflow<Vec<Talk>, String, Request, Response>,
+) -> Option<Workflow<Vec<Talk>, String, Request, Response>> {
+    let mut wf: Workflow<Vec<Talk>, String, Request, Response> = Workflow {
+        workflow: HashMap::new(),
+    };
+    for (name, hmap) in workflow.workflow {
+        let mut new_hmap = HashMap::new();
+        for (tag, item) in hmap {
+            let mut req_file = File::open(item.request.template_path.clone()).ok()?;
+            let mut req_template = String::new();
+            req_file.read_to_string(&mut req_template).ok()?;
+
+            let mut rsp_file = File::open(item.response.template_path.clone()).ok()?;
+            let mut rsp_template = String::new();
+            rsp_file.read_to_string(&mut rsp_template).ok()?;
+
+            let new_item = Item {
+                request: Box::new(Request {
+                    template_path: item.request.template_path.clone(),
+                    template: Some(req_template.clone()),
+                }),
+                response: Box::new(Response {
+                    template_path: item.response.template_path.clone(),
+                    template: Some(rsp_template.clone()),
+                }),
+                ..item
+            };
+            new_hmap.insert(tag, new_item);
+        }
+        wf.workflow.insert(name.clone(), new_hmap);
+    }
+    Some(wf)
+}
 struct Model {
     env: Cli,
     prompts: HashMap<String, Box<Prompt>>,

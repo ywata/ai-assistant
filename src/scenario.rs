@@ -1,5 +1,6 @@
+use log::debug;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -56,12 +57,12 @@ where
     O: Renderer<S, T> + Clone + Debug,
 {
     #[serde(skip)]
-    _s: PhantomData<S>,
+    pub _s: PhantomData<S>,
     #[serde(skip)]
-    _t: PhantomData<T>,
-    next: StateTrans,
-    request: Box<I>,
-    response: Box<O>,
+    pub _t: PhantomData<T>,
+    pub next: StateTrans,
+    pub request: Box<I>,
+    pub response: Box<O>,
 }
 
 impl<S, T, I, O> Clone for Item<S, T, I, O>
@@ -101,5 +102,38 @@ where
 {
     pub fn new(workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>) -> Self {
         Workflow { workflow }
+    }
+}
+
+pub fn parse_scenario<S, T, I, O>(
+    prompts: HashMap<String, Box<Prompt>>,
+    wf: Workflow<S, T, I, O>,
+) -> Option<(HashMap<String, Box<Prompt>>, Workflow<S, T, I, O>)>
+where
+    S: Debug,
+    T: Debug,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
+{
+    if prompts.is_empty() {
+        return None;
+    }
+    let prompt_pairs: HashSet<(String, String)> = prompts
+        .iter()
+        .map(|(n, p)| p.inputs.iter().map(|i| (n.clone(), i.tag.clone())))
+        .flatten()
+        .collect();
+    let wf_pairs: HashSet<(String, String)> = wf
+        .workflow
+        .iter()
+        .map(|(n, hm)| hm.iter().map(|(t, _itm)| (n.clone(), t.clone())))
+        .flatten()
+        .collect();
+    if prompt_pairs.eq(&wf_pairs) {
+        Some((prompts, wf))
+    } else {
+        debug!("{:?}", prompt_pairs);
+        debug!("{:?}", wf_pairs);
+        None
     }
 }

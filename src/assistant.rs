@@ -333,7 +333,7 @@ impl Model {
         }
         false
     }
-    fn put_talk(&mut self, talk: Talk) {
+    fn push_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
     }
     fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
@@ -605,7 +605,7 @@ impl Application for Model {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
                         let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-                        self.put_talk(Talk::InputShown {
+                        self.push_talk(Talk::InputShown {
                             name,
                             message: Content::Text(prefixed_text),
                         });
@@ -622,7 +622,7 @@ impl Application for Model {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                    self.put_talk(Talk::ToAi {
+                    self.push_talk(Talk::ToAi {
                         name,
                         message: Content::Text(input.clone()),
                     });
@@ -643,7 +643,7 @@ impl Application for Model {
                 match answer {
                     Ok((name, text)) => {
                         next_current = Some((self.current.0.clone(), self.current.1.clone()));
-                        self.put_talk(Talk::FromAi {
+                        self.push_talk(Talk::FromAi {
                             name: name.clone(),
                             message: Content::Text(text.clone()),
                         });
@@ -659,7 +659,7 @@ impl Application for Model {
                             resp_content = Content::Text(text);
                         }
                         self.set_proposal(resp_content.clone());
-                        self.put_talk(Talk::ResponseShown {
+                        self.push_talk(Talk::ResponseShown {
                             name,
                             message: resp_content,
                         })

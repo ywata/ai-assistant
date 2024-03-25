@@ -1111,7 +1111,7 @@ queen:
     - tag: q2
       text: input for queen_q2
         "#;
-        let prompts: HashMap<String, Prompt> = read_config(None, &prompt_str).unwrap();
+        let prompts: HashMap<String, Box<Prompt>> = read_config(None, &prompt_str).unwrap();
         let workflow_str = r#"
 workflow:
   king:
@@ -1142,6 +1142,7 @@ workflow:
         name: asdf
         "#;
         let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_str).unwrap();
-        let (p, wf) = parse_scenario(prompts, wf).unwrap();
+        let parsed = parse_scenario(prompts, wf);
+        assert_eq!(parsed.is_some(), true);
     }
 }

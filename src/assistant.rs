@@ -277,20 +277,26 @@ impl Renderer<Vec<Talk>, String> for Response {
 
 fn load_template(
     workflow: Workflow<Vec<Talk>, String, Request, Response>,
-) -> Option<Workflow<Vec<Talk>, String, Request, Response>> {
+) -> Result<Workflow<Vec<Talk>, String, Request, Response>, AssistantError> {
     let mut wf: Workflow<Vec<Talk>, String, Request, Response> = Workflow {
         workflow: HashMap::new(),
     };
     for (name, hmap) in workflow.workflow {
         let mut new_hmap = HashMap::new();
         for (tag, item) in hmap {
-            let mut req_file = File::open(item.request.template_path.clone()).ok()?;
+            let mut req_file = File::open(item.request.template_path.clone())
+                .map_err(|_| AssistantError::FileOpenFailed("req open".to_string()))?;
             let mut req_template = String::new();
-            req_file.read_to_string(&mut req_template).ok()?;
+            req_file
+                .read_to_string(&mut req_template)
+                .map_err(|_| AssistantError::FileOpenFailed("req open".to_string()))?;
 
-            let mut rsp_file = File::open(item.response.template_path.clone()).ok()?;
+            let mut rsp_file = File::open(item.response.template_path.clone())
+                .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
             let mut rsp_template = String::new();
-            rsp_file.read_to_string(&mut rsp_template).ok()?;
+            rsp_file
+                .read_to_string(&mut rsp_template)
+                .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
 
             let new_item = Item {
                 request: Box::new(Request {
@@ -307,7 +313,7 @@ fn load_template(
         }
         wf.workflow.insert(name.clone(), new_hmap);
     }
-    Some(wf)
+    Ok(wf)
 }
 struct Model {
     env: Cli,
@@ -391,6 +397,10 @@ impl Model {
 pub enum AssistantError {
     #[error("file already exists for the directory")]
     FileExists(),
+
+    #[error("file open error")]
+    FileOpenFailed(String),
+
     #[error("IO error")]
     IoError,
 

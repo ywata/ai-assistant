@@ -255,44 +255,44 @@ impl Talk {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Request {
-    template_path: String,
+    path: String,
     template: Option<String>,
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Response {
-    template_path: String,
+    path: String,
     template: Option<String>,
 }
 
-impl Renderer<Vec<Talk>, String> for Request {
-    fn render(_talks: &Vec<Talk>) -> String {
+impl Renderer<(Prompt, Vec<Talk>), String> for Request {
+    fn render(_talks: &(Prompt, Vec<Talk>)) -> String {
         "".to_string()
     }
 }
 
-impl Renderer<Vec<Talk>, String> for Response {
-    fn render(_talks: &Vec<Talk>) -> String {
+impl Renderer<(Prompt, Vec<Talk>), String> for Response {
+    fn render(_talks: &(Prompt, Vec<Talk>)) -> String {
         "".to_string()
     }
 }
 
 fn load_template(
-    workflow: Workflow<Vec<Talk>, String, Request, Response>,
-) -> Result<Workflow<Vec<Talk>, String, Request, Response>, AssistantError> {
-    let mut wf: Workflow<Vec<Talk>, String, Request, Response> = Workflow {
+    workflow: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
+) -> Result<Workflow<(Prompt, Vec<Talk>), String, Request, Response>, AssistantError> {
+    let mut wf: Workflow<(Prompt, Vec<Talk>), String, Request, Response> = Workflow {
         workflow: HashMap::new(),
     };
     for (name, hmap) in workflow.workflow {
         let mut new_hmap = HashMap::new();
         for (tag, item) in hmap {
-            let mut req_file = File::open(item.request.template_path.clone())
+            let mut req_file = File::open(item.request.path.clone())
                 .map_err(|_| AssistantError::FileOpenFailed("req open".to_string()))?;
             let mut req_template = String::new();
             req_file
                 .read_to_string(&mut req_template)
                 .map_err(|_| AssistantError::FileOpenFailed("req open".to_string()))?;
 
-            let mut rsp_file = File::open(item.response.template_path.clone())
+            let mut rsp_file = File::open(item.response.path.clone())
                 .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
             let mut rsp_template = String::new();
             rsp_file
@@ -301,11 +301,11 @@ fn load_template(
 
             let new_item = Item {
                 request: Box::new(Request {
-                    template_path: item.request.template_path.clone(),
+                    path: item.request.path.clone(),
                     template: Some(req_template.clone()),
                 }),
                 response: Box::new(Response {
-                    template_path: item.response.template_path.clone(),
+                    path: item.response.path.clone(),
                     template: Some(rsp_template.clone()),
                 }),
                 ..item
@@ -327,7 +327,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow<Vec<Talk>, String, Request, Response>,
+    workflow: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
     proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
 
@@ -499,7 +499,7 @@ impl Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Box<Prompt>>,
-        Workflow<Vec<Talk>, String, Request, Response>,
+        Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
         Option<CClient>,
     );
 

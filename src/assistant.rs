@@ -344,28 +344,6 @@ impl Model {
         }
         None
     }
-
-    fn set_proposal(&mut self, content: Content) {
-        self.proposal = match content {
-            Content::Json(prop) => {
-                let prop = serde_json::from_str::<HashMap<String, Vec<String>>>(&prop)
-                    .map(|hmap| {
-                        hmap.iter()
-                            .map(|(k, v)| {
-                                let mut vec = Vec::new();
-                                for i in v {
-                                    vec.push((i.clone(), false));
-                                }
-                                (k.clone(), vec)
-                            })
-                            .collect()
-                    })
-                    .ok();
-                prop
-            }
-            _ => None,
-        };
-    }
 }
 
 #[derive(Error, Clone, Debug)]
@@ -621,27 +599,10 @@ impl Application for Model {
 
                 match answer {
                     Ok((name, text)) => {
-                        next_current = Some((self.current.0.clone(), self.current.1.clone()));
                         self.push_talk(Talk::FromAi {
                             name: name.clone(),
                             message: Content::Text(text.clone()),
                         });
-
-                        let opt_markers = self.env.get_markers();
-                        let mut resp_content = Content::Text(text.clone());
-                        if let Ok(markers) = opt_markers {
-                            let contents = split_code(&text, &markers.clone()).clone();
-                            resp_content =
-                                extract_content(self, contents).unwrap_or(Content::Text(text));
-                        } else {
-                            trace!("No: markers");
-                            resp_content = Content::Text(text);
-                        }
-                        self.set_proposal(resp_content.clone());
-                        self.push_talk(Talk::ResponseShown {
-                            name,
-                            message: resp_content,
-                        })
                     }
                     _ => error!("FAILED"),
                 }

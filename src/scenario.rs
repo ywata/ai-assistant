@@ -23,12 +23,6 @@ impl Prompt {
             inputs,
         }
     }
-    pub fn get_instruction(&self) -> String {
-        self.instruction.clone()
-    }
-    pub fn get_inputs(&self) -> Vec<Input> {
-        self.inputs.clone()
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

@@ -9,7 +9,7 @@ use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use std::fs::File;
@@ -239,15 +239,6 @@ impl Talk {
             Talk::ToAi { message, .. } => message,
             Talk::FromAi { message, .. } => message,
             Talk::ResponseShown { message, .. } => message,
-        };
-        n.clone()
-    }
-    fn get_name(&self) -> AssistantName {
-        let n = match self {
-            Talk::InputShown { name, .. } => name,
-            Talk::ToAi { name, .. } => name,
-            Talk::FromAi { name, .. } => name,
-            Talk::ResponseShown { name, .. } => name,
         };
         n.clone()
     }
@@ -523,7 +514,6 @@ impl Application for Model {
         let tag = first_prompt.inputs.first().unwrap().tag.clone();
         let loaded = load_data_from_prompt(*first_prompt, &tag);
         // Initialize EditArea with loaded input.
-        let mut prefixed_text = String::from("");
         let mut commands: Vec<Command<Message>> = vec![
             Command::perform(
                 load_initial_input(name.clone(), tag.clone()),

@@ -1,5 +1,6 @@
 use crate::response_content::get_content;
 use crate::response_content::Mark;
+use crate::scenario::Input;
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
 use crate::scenario::Workflow;
@@ -529,8 +530,20 @@ impl Application for Model {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
-                self.current.0 = name;
-                self.current.1 = tag;
+                let itm = self.wf.get_item(&name, &tag);
+                let inputs: Option<Vec<_>> = self
+                    .prompts
+                    .get(&name)
+                    .map(|p| p.inputs.into_iter().filter(|i| i.tag == tag).collect());
+
+                if let (Some(item), Some(prompt)) = (itm, inputs) {
+                    debug!("{:?}", item);
+                    debug!("{:?}", prompt);
+
+                    self.current.0 = name;
+                    self.current.1 = tag;
+                } else {
+                }
 
                 Command::none()
             }

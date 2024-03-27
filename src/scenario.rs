@@ -107,3 +107,15 @@ where
         None
     }
 }
+
+impl<S, T, I, O> Workflow<S, T, I, O>
+where
+    S: Debug,
+    T: Debug,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
+{
+    pub fn get_item(&self, name: &str, tag: &str) -> Option<&Item<S, T, I, O>> {
+        self.workflow.get(name).map(|hm| hm.get(tag)).flatten()
+    }
+}

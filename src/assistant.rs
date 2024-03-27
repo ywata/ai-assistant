@@ -478,10 +478,9 @@ impl Application for Model {
         let tag = first_prompt.inputs.first().unwrap().tag.clone();
         // Initialize EditArea with loaded input.
         let mut commands: Vec<Command<Message>> = vec![
-            Command::perform(
-                load_initial_input(name.clone(), tag.clone()),
-                |(name, tag)| Message::LoadInput { name, tag },
-            ),
+            Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
+                Message::LoadInput { name, tag }
+            }),
             Command::perform(
                 connect(
                     flags.1.clone(),
@@ -530,22 +529,9 @@ impl Application for Model {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
-                // A bit too early, but let's do it for now.
-                next_current = Some((name.clone(), tag.clone()));
+                self.current.0 = name;
+                self.current.1 = tag;
 
-                let prompt = self.prompts.get(&name).unwrap().clone();
-                //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let _result = load_data_from_prompt(*prompt, &tag)
-                    .map(|i| {
-                        let input = i.input.clone();
-                        let prefix = i.prefix.clone();
-                        let prefixed_text = prefix.unwrap_or_default() + "\n" + &input;
-                        self.push_talk(Talk::InputShown {
-                            name,
-                            message: Content::Text(prefixed_text),
-                        });
-                    })
-                    .ok_or(());
                 Command::none()
             }
 
@@ -591,7 +577,7 @@ impl Application for Model {
 
                 Command::none()
             }
-            Message::Toggled(String, usize, bool) => Command::none(),
+            Message::Toggled(_string, _usize, _bool) => Command::none(),
             Message::FontLoaded(_) => Command::none(),
             Message::DoNothing => Command::none(),
         };
@@ -656,7 +642,7 @@ impl Application for Model {
     }
 }
 
-async fn load_initial_input(p0: String, p1: String) -> (String, String) {
+async fn load_input(p0: String, p1: String) -> (String, String) {
     (p0, p1)
 }
 

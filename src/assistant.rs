@@ -319,7 +319,6 @@ struct Model {
     edit_areas: Vec<EditArea>,
     current: (String, String),
     workflow: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
-    proposal: Option<HashMap<String, Vec<(String, bool)>>>,
 }
 
 impl Model {
@@ -434,10 +433,6 @@ fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
         .get_talk(|name, message| Talk::InputShown { name, message })
         .map(|t| t.get_message().get_text())
         .unwrap_or("".to_string());
-    if let Some(selected) = model.proposal.clone().map(|p| pick_selected(&p)) {
-        info!("load_content(): selected:{:?}", &selected);
-        text = selected.join("\n");
-    }
 
     debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
 
@@ -522,7 +517,6 @@ impl Application for Model {
                 current: (name.clone(), tag.clone()),
                 workflow: flags.3,
                 conversations: vec![],
-                proposal: None,
             },
             Command::<Message>::batch(commands),
         )
@@ -593,8 +587,6 @@ impl Application for Model {
                 }
             }
             Message::Answered { answer, auto } => {
-                self.proposal = None;
-
                 let command = Command::none();
 
                 match answer {
@@ -614,13 +606,6 @@ impl Application for Model {
             }
             Message::Toggled(message, i, checked) => {
                 info!("Toggled: message:{}, checked:{}", message, checked);
-
-                if let Some(vec) = &mut self.proposal {
-                    if let Some(v) = vec.get_mut(&message) {
-                        v[i].1 = checked;
-                    }
-                }
-
                 Command::none()
             }
 
@@ -664,12 +649,6 @@ impl Application for Model {
         let vec = &self.edit_areas;
         debug!("view(): {:?}", vec);
 
-        let response: Element<Message> = self
-            .proposal
-            .clone()
-            .map(|p| to_checkboxes(p).into())
-            .unwrap_or(text_editor(&vec.get(AreaIndex::Result as usize).unwrap().content).into());
-
         column![
             row![
                 row(list_inputs(&self.prompts)
@@ -697,7 +676,9 @@ impl Application for Model {
                     text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
                         .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
                 ],
-                column![response,],
+                column![text_editor(
+                    &vec.get(AreaIndex::Result as usize).unwrap().content
+                )],
             ],
         ]
         .into()

@@ -16,15 +16,6 @@ pub struct Prompt {
     pub inputs: Vec<Input>,
 }
 
-impl Prompt {
-    pub fn new(instruction: String, inputs: Vec<Input>) -> Self {
-        Prompt {
-            instruction,
-            inputs,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 pub enum StateTrans {
     #[default]

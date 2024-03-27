@@ -309,7 +309,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
+    wf: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
 }
 
 impl Model {
@@ -504,7 +504,7 @@ impl Application for Model {
                 context: None,
                 edit_areas: vec![prompt, input, result],
                 current: (name.clone(), tag.clone()),
-                workflow: flags.3,
+                wf: flags.3,
                 conversations: vec![],
             },
             Command::<Message>::batch(commands),

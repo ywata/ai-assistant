@@ -75,18 +75,6 @@ where
     pub workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
 }
 
-impl<S, T, I, O> Workflow<S, T, I, O>
-where
-    S: Debug,
-    T: Clone + Debug,
-    I: Renderer<S, T> + Clone + Debug,
-    O: Renderer<S, T> + Clone + Debug,
-{
-    pub fn new(workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>) -> Self {
-        Workflow { workflow }
-    }
-}
-
 pub fn parse_scenario<S, T, I, O>(
     prompts: HashMap<String, Box<Prompt>>,
     wf: Workflow<S, T, I, O>,

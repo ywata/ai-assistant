@@ -1,5 +1,4 @@
 use crate::response_content::get_content;
-use crate::response_content::split_code;
 use crate::response_content::Mark;
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
@@ -29,7 +28,7 @@ use iced::{font, Alignment, Application, Command, Element, Settings, Theme};
 use thiserror::Error;
 
 use clap::{Parser, Subcommand};
-use log::{debug, error, info, trace};
+use log::{debug, error, info};
 
 use tokio::sync::Mutex;
 
@@ -429,7 +428,7 @@ fn load_data_from_prompt(prompt: Prompt, tag: &str) -> Option<LoadedData> {
 
 fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
     let prompt = model.prompts.get(&model.current.0).unwrap().clone();
-    let mut text = model
+    let text = model
         .get_talk(|name, message| Talk::InputShown { name, message })
         .map(|t| t.get_message().get_text())
         .unwrap_or("".to_string());
@@ -485,7 +484,6 @@ impl Application for Model {
         let first_prompt = flags.2.get(&name).unwrap().clone();
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
         let tag = first_prompt.inputs.first().unwrap().tag.clone();
-        let loaded = load_data_from_prompt(*first_prompt, &tag);
         // Initialize EditArea with loaded input.
         let mut commands: Vec<Command<Message>> = vec![
             Command::perform(
@@ -539,7 +537,7 @@ impl Application for Model {
             }
             Message::Connected(Err(_)) => Command::none(),
 
-            Message::NextWorkflow { auto } => {
+            Message::NextWorkflow { .. } => {
                 let current = self.current.clone();
                 info!("NextWorkflow:current {:?}", current.clone());
 
@@ -552,7 +550,7 @@ impl Application for Model {
 
                 let prompt = self.prompts.get(&name).unwrap().clone();
                 //Command::perform(load_input(prompt, tag), Message::InputLoaded)
-                let result = load_data_from_prompt(*prompt, &tag)
+                let _result = load_data_from_prompt(*prompt, &tag)
                     .map(|i| {
                         let input = i.input.clone();
                         let prefix = i.prefix.clone();
@@ -586,7 +584,7 @@ impl Application for Model {
                     Command::none()
                 }
             }
-            Message::Answered { answer, auto } => {
+            Message::Answered { answer, .. } => {
                 let command = Command::none();
 
                 match answer {
@@ -604,7 +602,7 @@ impl Application for Model {
                 debug!("{:?}", msg);
                 Command::none()
             }
-            Message::Toggled(message, i, checked) => {
+            Message::Toggled(message, _i, checked) => {
                 info!("Toggled: message:{}, checked:{}", message, checked);
                 Command::none()
             }
@@ -689,7 +687,7 @@ async fn load_initial_input(p0: String, p1: String) -> (String, String) {
     (p0, p1)
 }
 
-fn extract_content(model: &mut Model, contents: Vec<Mark>) -> Option<Content> {
+fn extract_content(_model: &mut Model, contents: Vec<Mark>) -> Option<Content> {
     let json = String::from("json");
     let fsharp = String::from("fsharp");
     if let Some(Mark::Content {

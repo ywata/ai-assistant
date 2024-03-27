@@ -36,14 +36,14 @@ pub enum OpenAi {
 impl Debug for OpenAi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OpenAi::OpenAiToken { token, model } => {
+            OpenAi::OpenAiToken { model, .. } => {
                 write!(f, "OpenAiToken {{ token: **** model: {} }}", model)
             }
             OpenAi::AzureAiToken {
-                key,
                 endpoint,
                 deployment_id,
                 api_version,
+                ..
             } => write!(
                 f,
                 "AzureAiToken {{ key: ****, endpoint: {}, deployment_id: {}, api_version: {} }}",

@@ -145,12 +145,6 @@ enum Message {
         tag: String,
     },
 
-    NextWorkflow {
-        auto: bool,
-    },
-
-    ActionPerformed(AreaIndex, text_editor::Action),
-
     QueryAi {
         name: String,
         tag: String,
@@ -160,8 +154,6 @@ enum Message {
         answer: Result<(String, String), (String, OpenAIApiError)>,
         auto: bool,
     },
-    Compiled(Result<Output, AssistantError>),
-
     SaveConversation {
         outut_dir: String,
     },
@@ -537,13 +529,6 @@ impl Application for Model {
             }
             Message::Connected(Err(_)) => Command::none(),
 
-            Message::NextWorkflow { .. } => {
-                let current = self.current.clone();
-                info!("NextWorkflow:current {:?}", current.clone());
-
-                Command::none()
-            }
-
             Message::LoadInput { name, tag } => {
                 // A bit too early, but let's do it for now.
                 next_current = Some((name.clone(), tag.clone()));
@@ -563,10 +548,7 @@ impl Application for Model {
                     .ok_or(());
                 Command::none()
             }
-            Message::ActionPerformed(idx, action) => {
-                self.edit_areas[idx as usize].content.perform(action);
-                Command::none()
-            }
+
             Message::QueryAi { name, auto, .. } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
@@ -598,14 +580,6 @@ impl Application for Model {
                 }
                 command
             }
-            Message::Compiled(msg) => {
-                debug!("{:?}", msg);
-                Command::none()
-            }
-            Message::Toggled(message, _i, checked) => {
-                info!("Toggled: message:{}, checked:{}", message, checked);
-                Command::none()
-            }
 
             Message::SaveConversation { outut_dir } => {
                 let convs = self.conversations.clone();
@@ -617,6 +591,7 @@ impl Application for Model {
 
                 Command::none()
             }
+            Message::Toggled(String, usize, bool) => Command::none(),
             Message::FontLoaded(_) => Command::none(),
             Message::DoNothing => Command::none(),
         };
@@ -656,7 +631,6 @@ impl Application for Model {
                         .into())),
                 row![
                     horizontal_space(),
-                    button("Next", "").on_press(Message::NextWorkflow { auto: false }),
                     button("Ask AI", "").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
@@ -670,10 +644,9 @@ impl Application for Model {
                 .width(iced::Length::Fill),
             ],
             row![
-                column![
-                    text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
-                        .on_action(|action| Message::ActionPerformed(AreaIndex::Input, action)),
-                ],
+                column![text_editor(
+                    &vec.get(AreaIndex::Input as usize).unwrap().content
+                ),],
                 column![text_editor(
                     &vec.get(AreaIndex::Result as usize).unwrap().content
                 )],

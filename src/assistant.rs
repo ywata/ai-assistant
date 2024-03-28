@@ -250,22 +250,22 @@ struct Response {
     template: Option<String>,
 }
 
-impl Renderer<(Prompt, Vec<Talk>), String> for Request {
-    fn render(_talks: &(Prompt, Vec<Talk>)) -> String {
-        "".to_string()
+impl Renderer<(Vec<Talk>, String, Input), String> for Request {
+    fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
+        "rendered by request".to_string()
     }
 }
 
-impl Renderer<(Prompt, Vec<Talk>), String> for Response {
-    fn render(_talks: &(Prompt, Vec<Talk>)) -> String {
-        "".to_string()
+impl Renderer<(Vec<Talk>, String, Input), String> for Response {
+    fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
+        "rendered by response".to_string()
     }
 }
 
 fn load_template(
-    workflow: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
-) -> Result<Workflow<(Prompt, Vec<Talk>), String, Request, Response>, AssistantError> {
-    let mut wf: Workflow<(Prompt, Vec<Talk>), String, Request, Response> = Workflow {
+    workflow: Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
+) -> Result<Workflow<(Vec<Talk>, String, Input), String, Request, Response>, AssistantError> {
+    let mut wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response> = Workflow {
         workflow: HashMap::new(),
     };
     for (name, hmap) in workflow.workflow {
@@ -313,7 +313,7 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    wf: Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
+    wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
 }
 
 impl Model {
@@ -425,7 +425,7 @@ impl Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Box<Prompt>>,
-        Workflow<(Prompt, Vec<Talk>), String, Request, Response>,
+        Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
         Option<CClient>,
     );
 
@@ -500,16 +500,21 @@ impl Application for Model {
 
             Message::LoadInput { name, tag } => {
                 let item = self.wf.get_item(&name, &tag);
-                let input: Option<&Input> = self
+                let input: Option<(&String, Option<&Input>)> = self
                     .prompts
                     .get(&name)
-                    .map(|p| p.inputs.get(&tag))
-                    .flatten();
+                    .map(|p| (&p.instruction, p.inputs.get(&tag)));
 
-                if let (Some(item), Some(prompt)) = (item, input) {
+                if let (Some(item), Some((instruction, Some(input)))) = (item, input) {
                     debug!("{:?}", item);
-                    debug!("{:?}", prompt);
-
+                    debug!("{:?}", input);
+                    let input_displayed = item.request.render(&(
+                        self.conversations.clone(),
+                        instruction.clone(),
+                        input.clone(),
+                    ));
+                    self.edit_areas[AreaIndex::Input as usize].content =
+                        text_editor::Content::with_text(&input_displayed);
                     self.current.0 = name;
                     self.current.1 = tag;
                 } else {

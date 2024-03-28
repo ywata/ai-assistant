@@ -29,7 +29,7 @@ pub enum StateTrans {
 }
 
 pub trait Renderer<S, T> {
-    fn render(state: &S) -> T;
+    fn render(&self, state: &S) -> T;
 }
 
 #[derive(Debug, Default, Deserialize)]

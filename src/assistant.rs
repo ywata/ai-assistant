@@ -9,7 +9,7 @@ use log::warn;
 use openai_api::ask;
 use openai_api::{AiService, AssistantName, CClient};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 
 use std::fs::File;
@@ -36,6 +36,8 @@ use tokio::sync::Mutex;
 use openai_api::{connect, Context, OpenAIApiError, OpenAi};
 
 use crate::compile::compile;
+
+use handlebars::Handlebars;
 
 //use thiserror::Error;
 mod compile;
@@ -252,7 +254,13 @@ struct Response {
 
 impl Renderer<(Vec<Talk>, String, Input), String> for Request {
     fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
-        self.template.clone().unwrap_or("DEFAULT".to_string())
+        let mut hb = Handlebars::new();
+        let mut data = BTreeMap::new();
+        hb.register_template_string("t1", self.template.clone().unwrap_or("".to_string()));
+        data.insert("prefix".to_string(), "PREFIX".to_string());
+        data.insert("text".to_string(), "TEXT".to_string());
+        hb.render("t1", &data).unwrap_or("failed".to_string())
+        //self.template.clone().unwrap_or("DEFAULT".to_string())
     }
 }
 

@@ -253,12 +253,15 @@ struct Response {
 }
 
 impl Renderer<(Vec<Talk>, String, Input), String> for Request {
-    fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
+    fn render(&self, talks: &(Vec<Talk>, String, Input)) -> String {
         let mut hb = Handlebars::new();
         let mut data = BTreeMap::new();
         hb.register_template_string("t1", self.template.clone().unwrap_or("".to_string()));
-        data.insert("prefix".to_string(), "PREFIX".to_string());
-        data.insert("text".to_string(), "TEXT".to_string());
+        data.insert(
+            "prefix".to_string(),
+            talks.2.prefix.clone().unwrap_or("".to_string()),
+        );
+        data.insert("text".to_string(), talks.2.text.clone());
         hb.render("t1", &data).unwrap_or("failed".to_string())
         //self.template.clone().unwrap_or("DEFAULT".to_string())
     }

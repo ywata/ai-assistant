@@ -413,13 +413,6 @@ async fn save_and_compile(output_path: PathBuf, code: String) -> Result<Output, 
     Ok(res)
 }
 
-#[derive(Debug, Clone)]
-struct LoadedData {
-    prompt: String,
-    prefix: Option<String>,
-    input: String,
-}
-
 fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
     area[idx as usize] = EditArea {

@@ -744,7 +744,7 @@ mod test {
         name: String,
     }
     impl Renderer<Vec<Talk>, String> for T {
-        fn render(_talks: &Vec<Talk>) -> String {
+        fn render(&self, _talks: &Vec<Talk>) -> String {
             "".to_string()
         }
     }
@@ -755,7 +755,7 @@ mod test {
         S3 { name: String },
     }
     impl Renderer<Vec<Talk>, String> for S {
-        fn render(_talks: &Vec<Talk>) -> String {
+        fn render(&self, _talks: &Vec<Talk>) -> String {
             "".to_string()
         }
     }

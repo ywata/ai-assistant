@@ -452,6 +452,7 @@ impl Application for Model {
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
         // Initialize EditArea with loaded input.
         let mut commands: Vec<Command<Message>> = vec![
+            // To triger initial sreen
             Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
                 Message::LoadInput { name, tag }
             }),

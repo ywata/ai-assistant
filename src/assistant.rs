@@ -154,11 +154,9 @@ enum Message {
     QueryAi {
         name: String,
         tag: String,
-        auto: bool,
     },
     Answered {
         answer: Result<(String, String, String), (String, OpenAIApiError)>,
-        auto: bool,
     },
     SaveConversation {
         outut_dir: String,
@@ -542,7 +540,7 @@ impl Application for Model {
                 Command::none()
             }
 
-            Message::QueryAi { name, tag, auto } => {
+            Message::QueryAi { name, tag } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
@@ -556,7 +554,7 @@ impl Application for Model {
 
                     Command::perform(
                         ask(pass_context, pass_name, pass_tag, input),
-                        move |answer| Message::Answered { answer, auto },
+                        move |answer| Message::Answered { answer },
                     )
                 } else {
                     Command::none()
@@ -612,10 +610,6 @@ impl Application for Model {
                     button("Ask AI", "").on_press(Message::QueryAi {
                         name: self.current.0.clone(),
                         tag: self.current.1.clone(),
-                        auto: false,
-                    }),
-                    button("save", "").on_press(Message::SaveConversation {
-                        outut_dir: self.env.output_dir.clone(),
                     }),
                 ]
                 .align_items(Alignment::End)

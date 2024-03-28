@@ -55,7 +55,9 @@ struct Cli {
     #[arg(long)]
     prompt_file: String,
     #[arg(long)]
-    prompt_key: String,
+    prompt_name: String,
+    #[arg(long)]
+    prompt_tag: String,
     #[arg(long)]
     workflow_file: Option<String>,
     #[arg(long)]
@@ -97,7 +99,8 @@ impl Default for Cli {
             config_file: "service.yaml".to_string(),
             config_key: "openai".to_string(),
             prompt_file: "prompt.txt".to_string(),
-            prompt_key: "".to_string(),
+            prompt_name: "".to_string(),
+            prompt_tag: "".to_string(),
             workflow_file: None,
             output_dir: "output".to_string(),
             command: Commands::default(),
@@ -405,39 +408,6 @@ struct LoadedData {
     prefix: Option<String>,
     input: String,
 }
-fn load_data_from_prompt(prompt: Prompt, tag: &str) -> Option<LoadedData> {
-    debug!("load_data_from_prompt(): prompt:{:?} tag:{}", &prompt, &tag);
-
-    prompt
-        .inputs
-        .iter()
-        .find(|i| i.tag == tag)
-        .map(|i| LoadedData {
-            prompt: prompt.instruction.clone(),
-            prefix: i.prefix.clone(),
-            input: i.text.clone(),
-        })
-}
-
-fn load_content(model: &Model, tag: &str) -> Option<LoadedData> {
-    let prompt = model.prompts.get(&model.current.0).unwrap().clone();
-    let text = model
-        .get_talk(|name, message| Talk::InputShown { name, message })
-        .map(|t| t.get_message().get_text())
-        .unwrap_or("".to_string());
-
-    debug!("load_content(): prompt:{:?} tag:{}", &prompt, &tag);
-
-    prompt
-        .inputs
-        .iter()
-        .find(|i| i.tag == tag)
-        .map(|i| LoadedData {
-            prompt: prompt.instruction.clone(),
-            prefix: i.prefix.clone(),
-            input: text.to_string(),
-        })
-}
 
 fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     let default = EditArea::default();
@@ -460,7 +430,8 @@ impl Application for Model {
     );
 
     fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
-        let name = flags.0.prompt_key.clone();
+        let name = flags.0.prompt_name.clone();
+        let tag = flags.0.prompt_tag.clone();
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
@@ -474,9 +445,7 @@ impl Application for Model {
         let client = flags.1.create_client();
         #[cfg(azure_ai)]
         let client = create_opeai_client(&flags.1);
-        let first_prompt = flags.2.get(&name).unwrap().clone();
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
-        let tag = first_prompt.inputs.first().unwrap().tag.clone();
         // Initialize EditArea with loaded input.
         let mut commands: Vec<Command<Message>> = vec![
             Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
@@ -530,13 +499,14 @@ impl Application for Model {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
-                let itm = self.wf.get_item(&name, &tag);
-                let inputs: Option<Vec<_>> = self
+                let item = self.wf.get_item(&name, &tag);
+                let input: Option<&Input> = self
                     .prompts
                     .get(&name)
-                    .map(|p| p.inputs.into_iter().filter(|i| i.tag == tag).collect());
+                    .map(|p| p.inputs.get(&tag))
+                    .flatten();
 
-                if let (Some(item), Some(prompt)) = (itm, inputs) {
+                if let (Some(item), Some(prompt)) = (item, input) {
                     debug!("{:?}", item);
                     debug!("{:?}", prompt);
 
@@ -686,13 +656,16 @@ fn extract_content(_model: &mut Model, contents: Vec<Mark>) -> Option<Content> {
 }
 
 fn list_inputs(prompts: &HashMap<String, Box<Prompt>>) -> Vec<(String, String)> {
-    let mut items = Vec::new();
-    for k in prompts.keys() {
-        for i in prompts.get(k).unwrap().inputs.iter() {
-            items.push((k.clone(), i.tag.clone()));
-        }
-    }
-    items
+    prompts
+        .into_iter()
+        .map(|(n, p)| {
+            p.clone()
+                .inputs
+                .into_iter()
+                .map(|(t, i)| (n.clone(), t.clone()))
+        })
+        .flatten()
+        .collect()
 }
 
 impl From<reqwest::Error> for AssistantError {
@@ -752,7 +725,7 @@ mod test {
           asdf
           asdf
         inputs:
-          - tag: abc
+          abc:
             text: |
              xyz
         "#
@@ -820,18 +793,18 @@ king:
   instruction: |
     This is instruction for king
   inputs:
-    - tag: k1
+    k1:
       prefix: k1_prefix
       text: input for king_k1
-    - tag: k2
+    k2:
       text: input for king_k2
 queen:
   instruction: Queen's instruction
   inputs:
-    - tag: q1
+    q1:
       prefix: q1_prefix
       text: input for queen_q1
-    - tag: q2
+    q2:
       text: input for queen_q2
         "#;
         let prompts: HashMap<String, Box<Prompt>> = read_config(None, &prompt_str).unwrap();

@@ -4,16 +4,18 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+type Tag = String;
+type Name = String;
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Input {
-    pub tag: String,
     pub prefix: Option<String>,
     pub text: String,
 }
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Prompt {
     pub instruction: String,
-    pub inputs: Vec<Input>,
+    pub inputs: HashMap<Tag, Input>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -21,8 +23,8 @@ pub enum StateTrans {
     #[default]
     Stop,
     Next {
-        name: String,
-        tag: String,
+        name: Name,
+        tag: Tag,
     },
 }
 
@@ -90,9 +92,10 @@ where
     }
     let prompt_pairs: HashSet<(String, String)> = prompts
         .iter()
-        .map(|(n, p)| p.inputs.iter().map(|i| (n.clone(), i.tag.clone())))
+        .map(|(n, p)| p.inputs.iter().map(|(t, _i)| (n.clone(), t.clone())))
         .flatten()
         .collect();
+
     let wf_pairs: HashSet<(String, String)> = wf
         .workflow
         .iter()

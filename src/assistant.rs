@@ -252,13 +252,13 @@ struct Response {
 
 impl Renderer<(Vec<Talk>, String, Input), String> for Request {
     fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
-        "rendered by request".to_string()
+        self.template.clone().unwrap_or("DEFAULT".to_string())
     }
 }
 
 impl Renderer<(Vec<Talk>, String, Input), String> for Response {
     fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
-        "rendered by response".to_string()
+        self.template.clone().unwrap_or("DEFAULT".to_string())
     }
 }
 

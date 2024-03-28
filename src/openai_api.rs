@@ -160,8 +160,9 @@ async fn setup_assistant(
 pub async fn ask(
     context: Arc<Mutex<Context>>,
     name: String,
+    tag: String,
     input: String,
-) -> Result<(String, String), (String, OpenAIApiError)> {
+) -> Result<(String, String, String), (String, OpenAIApiError)> {
     let query = [("limit", "1")]; //limit the list responses to 1 message
 
     // TODO: handle locked state
@@ -246,7 +247,7 @@ pub async fn ask(
                     };
                     //print the text
                     info!("--- Response: {}", &text);
-                    return Ok((name, text.clone()));
+                    return Ok((name, tag, text.clone()));
                 }
 
                 RunStatus::Failed => {
@@ -261,7 +262,7 @@ pub async fn ask(
         panic!("No interaction found");
     }
 
-    Ok((name, String::from("???")))
+    Ok((name, tag, String::from("???")))
 }
 
 pub trait AiService<C: Config> {

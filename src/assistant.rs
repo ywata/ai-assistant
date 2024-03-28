@@ -157,7 +157,7 @@ enum Message {
         auto: bool,
     },
     Answered {
-        answer: Result<(String, String), (String, OpenAIApiError)>,
+        answer: Result<(String, String, String), (String, OpenAIApiError)>,
         auto: bool,
     },
     SaveConversation {
@@ -209,22 +209,27 @@ impl Content {
     }
 }
 
+type Tag = String;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Talk {
-    InputShown {
+    OriginalInput {
         name: AssistantName,
+        tag: Tag,
         message: Content,
     },
     ToAi {
         name: AssistantName,
+        tag: Tag,
         message: Content,
     },
     FromAi {
         name: AssistantName,
+        tag: Tag,
         message: Content,
     },
-    ResponseShown {
+    ProcessedResponse {
         name: AssistantName,
+        tag: Tag,
         message: Content,
     },
 }
@@ -232,10 +237,10 @@ enum Talk {
 impl Talk {
     fn get_message<'a>(&self) -> Content {
         let n = match self {
-            Talk::InputShown { message, .. } => message,
+            Talk::OriginalInput { message, .. } => message,
             Talk::ToAi { message, .. } => message,
             Talk::FromAi { message, .. } => message,
-            Talk::ResponseShown { message, .. } => message,
+            Talk::ProcessedResponse { message, .. } => message,
         };
         n.clone()
     }
@@ -334,14 +339,18 @@ impl Model {
     fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
         for talk in self.conversations.iter().rev() {
             let talk_ = match talk {
-                Talk::InputShown { name, message } => {
+                Talk::OriginalInput { name, message, .. } => {
                     cnstr(name.to_string().clone(), message.clone())
                 }
-                Talk::ToAi { name, message } => cnstr(name.to_string().clone(), message.clone()),
-                Talk::ResponseShown { name, message } => {
+                Talk::ToAi { name, message, .. } => {
                     cnstr(name.to_string().clone(), message.clone())
                 }
-                Talk::FromAi { name, message } => cnstr(name.to_string().clone(), message.clone()),
+                Talk::ProcessedResponse { name, message, .. } => {
+                    cnstr(name.to_string().clone(), message.clone())
+                }
+                Talk::FromAi { name, message, .. } => {
+                    cnstr(name.to_string().clone(), message.clone())
+                }
             };
             if *talk == talk_ {
                 return Some(talk.clone());
@@ -520,27 +529,35 @@ impl Application for Model {
                     ));
                     self.edit_areas[AreaIndex::Input as usize].content =
                         text_editor::Content::with_text(&input_displayed);
+                    self.push_talk(Talk::ToAi {
+                        name: name.clone(),
+                        tag: tag.clone(),
+                        message: Content::Text(input_displayed),
+                    });
+
                     self.current.0 = name;
                     self.current.1 = tag;
-                } else {
                 }
 
                 Command::none()
             }
 
-            Message::QueryAi { name, auto, .. } => {
+            Message::QueryAi { name, tag, auto } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
                     let pass_name = name.clone();
+                    let pass_tag = tag.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                     self.push_talk(Talk::ToAi {
                         name,
+                        tag,
                         message: Content::Text(input.clone()),
                     });
 
-                    Command::perform(ask(pass_context, pass_name, input), move |answer| {
-                        Message::Answered { answer, auto }
-                    })
+                    Command::perform(
+                        ask(pass_context, pass_name, pass_tag, input),
+                        move |answer| Message::Answered { answer, auto },
+                    )
                 } else {
                     Command::none()
                 }
@@ -549,9 +566,10 @@ impl Application for Model {
                 let command = Command::none();
 
                 match answer {
-                    Ok((name, text)) => {
+                    Ok((name, tag, text)) => {
                         self.push_talk(Talk::FromAi {
                             name: name.clone(),
+                            tag: tag.clone(),
                             message: Content::Text(text.clone()),
                         });
                     }
@@ -574,25 +592,6 @@ impl Application for Model {
             Message::FontLoaded(_) => Command::none(),
             Message::DoNothing => Command::none(),
         };
-
-        if let Some((name, tag)) = next_current {
-            info!("Updated to: {} {}", &name, &tag);
-            self.current = (name, tag);
-            debug!("{:?}", &self.conversations);
-
-            let input = self
-                .get_talk(|name, message| Talk::InputShown { name, message })
-                .map(|t| t.get_message().get_text())
-                .unwrap_or("".to_string());
-            info!("input: {:?}", &input);
-            set_editor_contents(&mut self.edit_areas, AreaIndex::Input, &input);
-            let answer = self
-                .get_talk(|name, message| Talk::ResponseShown { name, message })
-                .map(|t| t.get_message().get_text())
-                .unwrap_or("junk".to_string());
-            info!("answer: {:?}", &answer);
-            set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &answer);
-        }
 
         command
     }

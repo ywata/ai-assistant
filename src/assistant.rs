@@ -255,32 +255,43 @@ struct Response {
     template: Option<String>,
 }
 
-type RenderingContext = (Vec<Talk>, String, Input);
-impl Renderer<RenderingContext, String> for Request {
-    fn render(&self, talks: &RenderingContext) -> String {
-        let mut hb = Handlebars::new();
+type RenderingContext<'a> = (&'a Handlebars<'a>, &'a Vec<Talk>, &'a String, &'a Input);
+impl<'a> Renderer<RenderingContext<'a>, String> for Request {
+    fn render(&self, talks: RenderingContext) -> String {
+        let (hb, t, s, i) = talks;
         let mut data = BTreeMap::new();
-        hb.register_template_string("t1", self.template.clone().unwrap_or("".to_string()));
         data.insert(
             "prefix".to_string(),
-            talks.2.prefix.clone().unwrap_or("".to_string()),
+            i.prefix.clone().unwrap_or("".to_string()),
         );
-        data.insert("text".to_string(), talks.2.text.clone());
-        hb.render("t1", &data).unwrap_or("failed".to_string())
-        //self.template.clone().unwrap_or("DEFAULT".to_string())
+        data.insert("text".to_string(), i.text.clone());
+        debug!("{:?}", &self.path);
+        debug!("{:?}", &self.template);
+        debug!("{:?}", &hb);
+        hb.render(&self.path, &data).unwrap_or("failed".to_string())
     }
 }
 
-impl Renderer<RenderingContext, String> for Response {
-    fn render(&self, _talks: &RenderingContext) -> String {
-        self.template.clone().unwrap_or("DEFAULT".to_string())
+impl<'a> Renderer<RenderingContext<'a>, String> for Response {
+    fn render(&self, talks: RenderingContext) -> String {
+        let (hb, t, s, i) = talks;
+        let mut data = BTreeMap::new();
+        data.insert(
+            "prefix".to_string(),
+            i.prefix.clone().unwrap_or("".to_string()),
+        );
+        data.insert("text".to_string(), i.text.clone());
+        debug!("{:?}", &self.path);
+        debug!("{:?}", &self.template);
+        debug!("{:?}", &hb);
+        hb.render(&self.path, &data).unwrap_or("failed".to_string())
     }
 }
 
-fn load_template(
-    workflow: Workflow<RenderingContext, String, Request, Response>,
-) -> Result<Workflow<RenderingContext, String, Request, Response>, AssistantError> {
-    let mut wf: Workflow<RenderingContext, String, Request, Response> = HashMap::new();
+fn load_template<'a>(
+    workflow: Workflow<RenderingContext<'a>, String, Request, Response>,
+) -> Result<Workflow<RenderingContext<'a>, String, Request, Response>, AssistantError> {
+    let mut wf: Workflow<RenderingContext<'a>, String, Request, Response> = HashMap::new();
     for (name, hmap) in workflow {
         let mut new_hmap = HashMap::new();
         for (tag, item) in hmap {
@@ -316,13 +327,26 @@ fn load_template(
     Ok(wf)
 }
 
-fn register_template(
+fn register_template<'a>(
     handlebars: &mut Handlebars,
-    workflow: Workflow<RenderingContext, String, Request, Response>,
+    workflow: &Workflow<RenderingContext<'a>, String, Request, Response>,
 ) -> () {
+    for (_, hm) in workflow {
+        for (_, item) in hm {
+            let item_cloned = item.clone();
+            item_cloned
+                .request
+                .template
+                .map(|t| handlebars.register_template_string(&item.request.path, &t));
+            item_cloned
+                .response
+                .template
+                .map(|t| handlebars.register_template_string(&item.response.path, &t));
+        }
+    }
 }
 
-struct Model {
+struct Model<'a> {
     env: Cli,
     prompts: HashMap<String, Box<Prompt>>,
     context: Option<Arc<Mutex<Context>>>,
@@ -333,11 +357,11 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    workflow: Workflow<RenderingContext, String, Request, Response>,
-    handlebars: Handlebars<'static>,
+    workflow: Workflow<RenderingContext<'a>, String, Request, Response>,
+    handlebars: Handlebars<'a>,
 }
 
-impl Model {
+impl<'a> Model<'a> {
     fn push_talk(&mut self, talk: Talk) {
         self.conversations.push(talk);
     }
@@ -435,7 +459,7 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl<'de> Application for Model {
+impl<'a> Application for Model<'a> {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
@@ -443,13 +467,14 @@ impl<'de> Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Box<Prompt>>,
-        Workflow<RenderingContext, String, Request, Response>,
+        Workflow<RenderingContext<'a>, String, Request, Response>,
         Option<CClient>,
     );
 
-    fn new(flags: <Model as iced::Application>::Flags) -> (Model, Command<Message>) {
+    fn new(flags: <Model<'a> as iced::Application>::Flags) -> (Model<'a>, Command<Message>) {
         let name = flags.0.prompt_name.clone();
         let tag = flags.0.prompt_tag.clone();
+        let workflow = flags.3;
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
@@ -480,6 +505,8 @@ impl<'de> Application for Model {
                 Message::Connected,
             ),
         ];
+        let mut handlebars = Handlebars::new();
+        register_template(&mut handlebars, &workflow);
         #[cfg(feature = "load_font")]
         commands.push(
             font::load(include_bytes!("../fonts/UDEVGothic-Regular.ttf").as_slice())
@@ -493,9 +520,9 @@ impl<'de> Application for Model {
                 context: None,
                 edit_areas: vec![prompt, input, result],
                 current: (name.clone(), tag.clone()),
-                workflow: flags.3,
+                workflow: workflow,
                 conversations: vec![],
-                handlebars: Handlebars::new(),
+                handlebars: handlebars,
             },
             Command::<Message>::batch(commands),
         )
@@ -528,10 +555,11 @@ impl<'de> Application for Model {
                 if let (Some(item), Some((instruction, Some(input)))) = (item, input) {
                     debug!("{:?}", item);
                     debug!("{:?}", input);
-                    let input_displayed = item.request.render(&(
-                        self.conversations.clone(),
-                        instruction.clone(),
-                        input.clone(),
+                    let input_displayed = item.request.render((
+                        &self.handlebars,
+                        &self.conversations,
+                        &instruction,
+                        &input,
                     ));
                     self.edit_areas[AreaIndex::Input as usize].content =
                         text_editor::Content::with_text(&input_displayed);

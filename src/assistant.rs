@@ -1,9 +1,9 @@
 use crate::response_content::get_content;
 use crate::response_content::Mark;
-use crate::scenario::Input;
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
 use crate::scenario::Workflow;
+use crate::scenario::{get_item, Input};
 use crate::scenario::{parse_scenario, Item};
 use log::warn;
 use openai_api::ask;
@@ -279,10 +279,8 @@ impl Renderer<(Vec<Talk>, String, Input), String> for Response {
 fn load_template(
     workflow: Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
 ) -> Result<Workflow<(Vec<Talk>, String, Input), String, Request, Response>, AssistantError> {
-    let mut wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response> = Workflow {
-        workflow: HashMap::new(),
-    };
-    for (name, hmap) in workflow.workflow {
+    let mut wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response> = HashMap::new();
+    for (name, hmap) in workflow {
         let mut new_hmap = HashMap::new();
         for (tag, item) in hmap {
             let mut req_file = File::open(item.request.path.clone())
@@ -312,7 +310,7 @@ fn load_template(
             };
             new_hmap.insert(tag, new_item);
         }
-        wf.workflow.insert(name.clone(), new_hmap);
+        wf.insert(name.clone(), new_hmap);
     }
     Ok(wf)
 }
@@ -511,7 +509,7 @@ impl Application for Model {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
-                let item = self.wf.get_item(&name, &tag);
+                let item = get_item(&self.wf, &name, &tag);
                 let input: Option<(&String, Option<&Input>)> = self
                     .prompts
                     .get(&name)

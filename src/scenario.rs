@@ -66,16 +66,8 @@ where
         }
     }
 }
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct Workflow<S, T, I, O>
-where
-    S: Debug,
-    T: Debug,
-    I: Renderer<S, T> + Clone + Debug,
-    O: Renderer<S, T> + Clone + Debug,
-{
-    pub workflow: HashMap<String, HashMap<String, Item<S, T, I, O>>>,
-}
+
+pub type Workflow<S, T, I, O> = HashMap<String, HashMap<String, Item<S, T, I, O>>>;
 
 pub fn parse_scenario<S, T, I, O>(
     prompts: HashMap<String, Box<Prompt>>,
@@ -97,7 +89,6 @@ where
         .collect();
 
     let wf_pairs: HashSet<(String, String)> = wf
-        .workflow
         .iter()
         .map(|(n, hm)| hm.iter().map(|(t, _itm)| (n.clone(), t.clone())))
         .flatten()
@@ -111,14 +102,16 @@ where
     }
 }
 
-impl<S, T, I, O> Workflow<S, T, I, O>
+pub fn get_item<S, T, I, O>(
+    hm: &HashMap<String, HashMap<String, Item<S, T, I, O>>>,
+    name: &str,
+    tag: &str,
+) -> Option<Item<S, T, I, O>>
 where
     S: Debug,
     T: Debug,
     I: Renderer<S, T> + Clone + Debug,
     O: Renderer<S, T> + Clone + Debug,
 {
-    pub fn get_item(&self, name: &str, tag: &str) -> Option<&Item<S, T, I, O>> {
-        self.workflow.get(name).map(|hm| hm.get(tag)).flatten()
-    }
+    hm.get(name).map(|hm| hm.get(tag)).flatten().cloned()
 }

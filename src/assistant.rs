@@ -267,23 +267,21 @@ impl<'a> Renderer<RenderingContext<'a>, String> for Request {
         data.insert("text".to_string(), i.text.clone());
         debug!("{:?}", &self.path);
         debug!("{:?}", &self.template);
-        debug!("{:?}", &hb);
         hb.render(&self.path, &data).unwrap_or("failed".to_string())
     }
 }
 
 impl<'a> Renderer<RenderingContext<'a>, String> for Response {
     fn render(&self, talks: RenderingContext) -> String {
-        let (hb, t, s, i) = talks;
+        let (hb, t, _, _) = talks;
+        let response = get_last_talk(&t)
+            .map(|t| t.get_message().get_text())
+            .unwrap_or("".to_string());
         let mut data = BTreeMap::new();
-        data.insert(
-            "prefix".to_string(),
-            i.prefix.clone().unwrap_or("".to_string()),
-        );
-        data.insert("text".to_string(), i.text.clone());
         debug!("{:?}", &self.path);
         debug!("{:?}", &self.template);
-        debug!("{:?}", &hb);
+
+        data.insert("response".to_string(), response);
         hb.render(&self.path, &data).unwrap_or("failed".to_string())
     }
 }
@@ -362,31 +360,14 @@ struct Model<'a> {
     handlebars: Handlebars<'a>,
 }
 
-impl<'a> Model<'a> {
-    fn push_talk(&mut self, talk: Talk) {
-        self.conversations.push(talk);
-    }
-    fn get_talk(&self, cnstr: impl Fn(AssistantName, Content) -> Talk) -> Option<Talk> {
-        for talk in self.conversations.iter().rev() {
-            let talk_ = match talk {
-                Talk::OriginalInput { name, message, .. } => {
-                    cnstr(name.to_string().clone(), message.clone())
-                }
-                Talk::ToAi { name, message, .. } => {
-                    cnstr(name.to_string().clone(), message.clone())
-                }
-                Talk::ProcessedResponse { name, message, .. } => {
-                    cnstr(name.to_string().clone(), message.clone())
-                }
-                Talk::FromAi { name, message, .. } => {
-                    cnstr(name.to_string().clone(), message.clone())
-                }
-            };
-            if *talk == talk_ {
-                return Some(talk.clone());
-            }
-        }
+fn push_talk(conversations: &mut Vec<Talk>, talk: Talk) {
+    conversations.push(talk);
+}
+fn get_last_talk(conversations: &Vec<Talk>) -> Option<Talk> {
+    if conversations.is_empty() {
         None
+    } else {
+        conversations.last().cloned()
     }
 }
 
@@ -564,11 +545,14 @@ impl<'a> Application for Model<'a> {
                     ));
                     self.edit_areas[AreaIndex::Input as usize].content =
                         text_editor::Content::with_text(&input_displayed);
-                    self.push_talk(Talk::ToAi {
-                        name: name.clone(),
-                        tag: tag.clone(),
-                        message: Content::Text(input_displayed),
-                    });
+                    push_talk(
+                        &mut self.conversations,
+                        Talk::ToAi {
+                            name: name.clone(),
+                            tag: tag.clone(),
+                            message: Content::Text(input_displayed),
+                        },
+                    );
 
                     self.current.0 = name;
                     self.current.1 = tag;
@@ -580,11 +564,14 @@ impl<'a> Application for Model<'a> {
             Message::QueryAi { name, tag } => {
                 if let Some(context) = self.context.clone() {
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
-                    self.push_talk(Talk::ToAi {
-                        name: name.clone(),
-                        tag: tag.clone(),
-                        message: Content::Text(input.clone()),
-                    });
+                    push_talk(
+                        &mut self.conversations,
+                        Talk::ToAi {
+                            name: name.clone(),
+                            tag: tag.clone(),
+                            message: Content::Text(input.clone()),
+                        },
+                    );
 
                     Command::perform(ask(context, name, tag, input), move |answer| {
                         Message::Answered { answer }
@@ -593,20 +580,42 @@ impl<'a> Application for Model<'a> {
                     Command::none()
                 }
             }
-            Message::Answered { answer, .. } => {
-                let command = Command::none();
+            Message::Answered {
+                answer: Ok((name, tag, text)),
+                ..
+            } => {
+                let item = get_item(&self.workflow, &name, &tag);
+                let input: Option<(&String, Option<&Input>)> = self
+                    .prompts
+                    .get(&name)
+                    .map(|p| (&p.instruction, p.inputs.get(&tag)));
+                debug!("text:{:?}", &text);
+                push_talk(
+                    &mut self.conversations,
+                    Talk::FromAi {
+                        name: name.clone(),
+                        tag: tag.clone(),
+                        message: Content::Text(text),
+                    },
+                );
 
-                match answer {
-                    Ok((name, tag, text)) => {
-                        self.push_talk(Talk::FromAi {
-                            name: name.clone(),
-                            tag: tag.clone(),
-                            message: Content::Text(text.clone()),
-                        });
-                    }
-                    _ => error!("FAILED"),
+                if let (Some(item), Some((instruction, Some(input)))) = (item, input) {
+                    let response_text = item.response.render((
+                        &self.handlebars,
+                        &self.conversations,
+                        &instruction,
+                        &input,
+                    ));
+
+                    set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &response_text);
+                    debug!("response_text:{:?}", response_text);
                 }
-                command
+
+                Command::none()
+            }
+            Message::Answered { answer: Err(_), .. } => {
+                error!("FAILED");
+                Command::none()
             }
 
             Message::SaveConversation { outut_dir } => {

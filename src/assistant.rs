@@ -580,19 +580,16 @@ impl<'a> Application for Model<'a> {
             Message::QueryAi { name, tag } => {
                 if let Some(context) = self.context.clone() {
                     let pass_context = context.clone();
-                    let pass_name = name.clone();
-                    let pass_tag = tag.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                     self.push_talk(Talk::ToAi {
-                        name,
-                        tag,
+                        name: name.clone(),
+                        tag: tag.clone(),
                         message: Content::Text(input.clone()),
                     });
 
-                    Command::perform(
-                        ask(pass_context, pass_name, pass_tag, input),
-                        move |answer| Message::Answered { answer },
-                    )
+                    Command::perform(ask(pass_context, name, tag, input), move |answer| {
+                        Message::Answered { answer }
+                    })
                 } else {
                     Command::none()
                 }

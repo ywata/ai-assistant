@@ -777,7 +777,7 @@ mod test {
     struct T {
         name: String,
     }
-    impl Renderer<Vec<Talk>, String> for T {
+    impl Renderer<&Vec<Talk>, String> for T {
         fn render(&self, _talks: &Vec<Talk>) -> String {
             "".to_string()
         }
@@ -788,7 +788,7 @@ mod test {
         S2(String),
         S3 { name: String },
     }
-    impl Renderer<Vec<Talk>, String> for S {
+    impl Renderer<&Vec<Talk>, String> for S {
         fn render(&self, _talks: &Vec<Talk>) -> String {
             "".to_string()
         }
@@ -801,7 +801,6 @@ mod test {
     #[test]
     fn test_convert_workflow() {
         let workflow_content = r#"
-        workflow:
           king:
             k11:
               next: !Stop
@@ -820,7 +819,7 @@ mod test {
                 name: response
         "#
         .to_string();
-        let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_content).unwrap();
+        let wf: Workflow<&Vec<Talk>, String, T, T> = read_config(None, &workflow_content).unwrap();
 
         assert_eq!(wf.len(), 2);
         assert_eq!(wf.get("king").unwrap().len(), 1);
@@ -848,7 +847,6 @@ queen:
         "#;
         let prompts: HashMap<String, Box<Prompt>> = read_config(None, &prompt_str).unwrap();
         let workflow_str = r#"
-workflow:
   king:
     k1:
       next: !Stop
@@ -876,7 +874,7 @@ workflow:
       response:
         name: asdf
         "#;
-        let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_str).unwrap();
+        let wf: Workflow<&Vec<Talk>, String, T, T> = read_config(None, &workflow_str).unwrap();
         let parsed = parse_scenario(prompts, wf);
         assert_eq!(parsed.is_some(), true);
     }

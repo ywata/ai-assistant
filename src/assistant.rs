@@ -255,8 +255,9 @@ struct Response {
     template: Option<String>,
 }
 
-impl Renderer<(Vec<Talk>, String, Input), String> for Request {
-    fn render(&self, talks: &(Vec<Talk>, String, Input)) -> String {
+type RenderingContext = (Vec<Talk>, String, Input);
+impl Renderer<RenderingContext, String> for Request {
+    fn render(&self, talks: &RenderingContext) -> String {
         let mut hb = Handlebars::new();
         let mut data = BTreeMap::new();
         hb.register_template_string("t1", self.template.clone().unwrap_or("".to_string()));
@@ -270,16 +271,16 @@ impl Renderer<(Vec<Talk>, String, Input), String> for Request {
     }
 }
 
-impl Renderer<(Vec<Talk>, String, Input), String> for Response {
-    fn render(&self, _talks: &(Vec<Talk>, String, Input)) -> String {
+impl Renderer<RenderingContext, String> for Response {
+    fn render(&self, _talks: &RenderingContext) -> String {
         self.template.clone().unwrap_or("DEFAULT".to_string())
     }
 }
 
 fn load_template(
-    workflow: Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
-) -> Result<Workflow<(Vec<Talk>, String, Input), String, Request, Response>, AssistantError> {
-    let mut wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response> = HashMap::new();
+    workflow: Workflow<RenderingContext, String, Request, Response>,
+) -> Result<Workflow<RenderingContext, String, Request, Response>, AssistantError> {
+    let mut wf: Workflow<RenderingContext, String, Request, Response> = HashMap::new();
     for (name, hmap) in workflow {
         let mut new_hmap = HashMap::new();
         for (tag, item) in hmap {
@@ -314,6 +315,13 @@ fn load_template(
     }
     Ok(wf)
 }
+
+fn register_template(
+    handlebars: &mut Handlebars,
+    workflow: Workflow<RenderingContext, String, Request, Response>,
+) -> () {
+}
+
 struct Model {
     env: Cli,
     prompts: HashMap<String, Box<Prompt>>,
@@ -325,7 +333,8 @@ struct Model {
     // Result edit_area will be used for displaying the result of AI.
     edit_areas: Vec<EditArea>,
     current: (String, String),
-    wf: Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
+    workflow: Workflow<RenderingContext, String, Request, Response>,
+    handlebars: Handlebars<'static>,
 }
 
 impl Model {
@@ -434,7 +443,7 @@ impl<'de> Application for Model {
         Cli,
         OpenAi,
         HashMap<String, Box<Prompt>>,
-        Workflow<(Vec<Talk>, String, Input), String, Request, Response>,
+        Workflow<RenderingContext, String, Request, Response>,
         Option<CClient>,
     );
 
@@ -484,8 +493,9 @@ impl<'de> Application for Model {
                 context: None,
                 edit_areas: vec![prompt, input, result],
                 current: (name.clone(), tag.clone()),
-                wf: flags.3,
+                workflow: flags.3,
                 conversations: vec![],
+                handlebars: Handlebars::new(),
             },
             Command::<Message>::batch(commands),
         )
@@ -509,7 +519,7 @@ impl<'de> Application for Model {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
-                let item = get_item(&self.wf, &name, &tag);
+                let item = get_item(&self.workflow, &name, &tag);
                 let input: Option<(&String, Option<&Input>)> = self
                     .prompts
                     .get(&name)
@@ -784,8 +794,8 @@ mod test {
         .to_string();
         let wf: Workflow<Vec<Talk>, String, T, T> = read_config(None, &workflow_content).unwrap();
 
-        assert_eq!(wf.workflow.len(), 2);
-        assert_eq!(wf.workflow.get("king").unwrap().len(), 1);
+        assert_eq!(wf.len(), 2);
+        assert_eq!(wf.get("king").unwrap().len(), 1);
     }
     #[test]
     fn test_parse_scenario() {

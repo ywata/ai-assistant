@@ -579,7 +579,6 @@ impl<'a> Application for Model<'a> {
 
             Message::QueryAi { name, tag } => {
                 if let Some(context) = self.context.clone() {
-                    let pass_context = context.clone();
                     let input = self.edit_areas[AreaIndex::Input as usize].content.text();
                     self.push_talk(Talk::ToAi {
                         name: name.clone(),
@@ -587,7 +586,7 @@ impl<'a> Application for Model<'a> {
                         message: Content::Text(input.clone()),
                     });
 
-                    Command::perform(ask(pass_context, name, tag, input), move |answer| {
+                    Command::perform(ask(context, name, tag, input), move |answer| {
                         Message::Answered { answer }
                     })
                 } else {

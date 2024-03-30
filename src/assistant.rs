@@ -358,6 +358,7 @@ struct Model<'a> {
     edit_areas: Vec<EditArea>,
     current: (String, String),
     workflow: Workflow<RenderingContext<'a>, String, Request, Response>,
+    // handlebars is setup from workflow on new(). It stores  path -> template mapping.
     handlebars: Handlebars<'a>,
 }
 

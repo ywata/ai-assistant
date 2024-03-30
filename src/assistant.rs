@@ -426,7 +426,7 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
-impl Application for Model {
+impl<'de> Application for Model {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;

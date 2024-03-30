@@ -1,5 +1,5 @@
 use log::debug;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -32,27 +32,51 @@ pub trait Renderer<S, T> {
     fn render(&self, state: &S) -> T;
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug)]
 pub struct Item<S, T, I, O>
 where
-    S: Debug,
-    T: Debug,
     I: Renderer<S, T> + Clone + Debug,
     O: Renderer<S, T> + Clone + Debug,
 {
-    #[serde(skip)]
     pub _s: PhantomData<S>,
-    #[serde(skip)]
     pub _t: PhantomData<T>,
     pub next: StateTrans,
     pub request: Box<I>,
     pub response: Box<O>,
 }
 
-impl<S, T, I, O> Clone for Item<S, T, I, O>
+impl<'de, S, T, I, O> Deserialize<'de> for Item<S, T, I, O>
 where
-    S: Debug,
-    T: Debug,
+    I: Renderer<S, T> + Clone + Debug + Deserialize<'de>,
+    O: Renderer<S, T> + Clone + Debug + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Item<S, T, I, O>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Debug, Clone, Deserialize)]
+        struct Inner<I, O> {
+            next: StateTrans,
+            request: I,
+            response: O,
+        }
+        let Inner {
+            next,
+            request,
+            response,
+        } = Inner::deserialize(deserializer)?;
+        Ok(Item {
+            _s: PhantomData,
+            _t: PhantomData,
+            next,
+            request,
+            response,
+        })
+    }
+}
+
+impl<'de, S, T, I, O> Clone for Item<S, T, I, O>
+where
     I: Renderer<S, T> + Clone + Debug,
     O: Renderer<S, T> + Clone + Debug,
 {

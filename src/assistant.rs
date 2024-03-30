@@ -300,14 +300,14 @@ fn load_template<'a>(
             let mut req_template = String::new();
             req_file
                 .read_to_string(&mut req_template)
-                .map_err(|_| AssistantError::FileOpenFailed("req open".to_string()))?;
+                .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
 
             let mut rsp_file = File::open(item.response.path.clone())
-                .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
+                .map_err(|_| AssistantError::FileOpenFailed("rsp open".to_string()))?;
             let mut rsp_template = String::new();
             rsp_file
                 .read_to_string(&mut rsp_template)
-                .map_err(|_| AssistantError::FileOpenFailed("req read".to_string()))?;
+                .map_err(|_| AssistantError::FileOpenFailed("rsp read".to_string()))?;
 
             let new_item = Item {
                 request: Box::new(Request {

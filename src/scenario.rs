@@ -32,6 +32,7 @@ pub trait Renderer<S, T> {
     fn render(&self, state: S) -> T;
 }
 
+/* struct Item is serialized in yaml file */
 #[derive(Debug)]
 pub struct Item<S, T, I, O>
 where
@@ -45,6 +46,9 @@ where
     pub response: Box<O>,
 }
 
+/* As #[derive(Deserialize)] requires S and T to be Deserializable,
+  Deserialize trait is manually implemented.
+*/
 impl<'de, S, T, I, O> Deserialize<'de> for Item<S, T, I, O>
 where
     I: Renderer<S, T> + Clone + Debug + Deserialize<'de>,

@@ -244,6 +244,28 @@ impl Talk {
     }
 }
 
+fn filter_talk(
+    conversations: &Vec<Talk>,
+    constructor: impl Fn(String, String, Content) -> Talk,
+) -> Vec<Talk> {
+    let variant = constructor(
+        "".to_string(),
+        "".to_string(),
+        Content::Text("".to_string()),
+    );
+    conversations
+        .iter()
+        .filter(|&talk| match (talk, &variant) {
+            (Talk::OriginalInput { .. }, Talk::OriginalInput { .. }) => true,
+            (Talk::FromAi { .. }, Talk::FromAi { .. }) => true,
+            (Talk::ToAi { .. }, Talk::ToAi { .. }) => true,
+            (Talk::ProcessedResponse { .. }, Talk::ProcessedResponse { .. }) => true,
+            _ => false,
+        })
+        .map(|t| t.clone())
+        .collect()
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Request {
     path: String,
@@ -274,9 +296,14 @@ impl<'a> Renderer<RenderingContext<'a>, String> for Request {
 impl<'a> Renderer<RenderingContext<'a>, String> for Response {
     fn render(&self, talks: RenderingContext) -> String {
         let (hb, t, _, _) = talks;
-        let response = get_last_talk(&t)
-            .map(|t| t.get_message().get_text())
-            .unwrap_or("".to_string());
+        let response = filter_talk(&t, |n, t, c| Talk::FromAi {
+            name: n,
+            tag: t,
+            message: c,
+        })
+        .last()
+        .map(|t| t.get_message().get_text())
+        .unwrap_or("".to_string());
         let mut data = BTreeMap::new();
         debug!("{:?}", &self.path);
         debug!("{:?}", &self.template);

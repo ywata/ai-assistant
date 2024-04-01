@@ -287,6 +287,20 @@ impl<'a> Renderer<RenderingContext<'a>, String> for Request {
             i.prefix.clone().unwrap_or("".to_string()),
         );
         data.insert("text".to_string(), i.text.clone());
+        debug!("text:{:?}", &i.text);
+        let response = filter_talk(&t, |n, t, c| Talk::FromAi {
+            name: n,
+            tag: t,
+            message: c,
+        })
+        .last()
+        .map(|t| t.get_message().get_text())
+        .unwrap_or("".to_string());
+        debug!("{:?}", &self.path);
+        debug!("{:?}", &self.template);
+
+        data.insert("last_response".to_string(), response);
+
         debug!("{:?}", &self.path);
         debug!("{:?}", &self.template);
         hb.render(&self.path, &data).unwrap_or("failed".to_string())
@@ -308,7 +322,7 @@ impl<'a> Renderer<RenderingContext<'a>, String> for Response {
         debug!("{:?}", &self.path);
         debug!("{:?}", &self.template);
 
-        data.insert("response".to_string(), response);
+        data.insert("last_response".to_string(), response);
         hb.render(&self.path, &data).unwrap_or("failed".to_string())
     }
 }

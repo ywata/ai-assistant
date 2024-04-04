@@ -296,8 +296,6 @@ impl<'a> Renderer<RenderingContext<'a>, String> for Request {
         .last()
         .map(|t| t.get_message().get_text())
         .unwrap_or("".to_string());
-        debug!("{:?}", &self.path);
-        debug!("{:?}", &self.template);
 
         data.insert("last_response".to_string(), response);
 

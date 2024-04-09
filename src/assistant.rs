@@ -624,6 +624,7 @@ impl<'a> Application for Model<'a> {
             Message::Connected(Err(_)) => Command::none(),
 
             Message::LoadInput { name, tag } => {
+                info!("({:?}, {:?})", &name, &tag);
                 let item = get_item(&self.workflow, &name, &tag);
                 let input: Option<(&String, Option<&Input>)> = self
                     .prompts
@@ -707,7 +708,8 @@ impl<'a> Application for Model<'a> {
                     set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &response_text);
                     debug!("response_text:{:?}", response_text);
                     dec_auto(&mut self.workflow, &name, &tag);
-                    if let Some((next, tag)) = get_next(&self.workflow, &name, &tag) {
+                    if let Some((name, tag)) = get_next(&self.workflow, &name, &tag) {
+                        info!("Answered: ({:?},{:?})", &name, &tag);
                         Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
                             Message::LoadInput {
                                 name: name.clone(),

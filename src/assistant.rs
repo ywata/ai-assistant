@@ -492,10 +492,16 @@ fn get_next<'a>(
         .flatten()
         .map(|item| match &item.next {
             StateTrans::Next {
-                auto: Some(_),
+                auto: Some(k),
                 name,
                 tag,
-            } => Some((name.clone(), tag.clone())),
+            } => {
+                if *k >= 0 {
+                    Some((name.clone(), tag.clone()))
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
         .flatten();
@@ -514,7 +520,15 @@ fn dec_auto<'a>(
         .map(|item| {
             let update = match &item.next {
                 StateTrans::Stop => StateTrans::Stop,
-                StateTrans::Next { auto: Some(0), .. } => StateTrans::Stop,
+                StateTrans::Next {
+                    auto: Some(0),
+                    name,
+                    tag,
+                } => StateTrans::Next {
+                    auto: Some(0),
+                    name: name.to_string(),
+                    tag: tag.to_string(),
+                },
                 StateTrans::Next {
                     auto: Some(k),
                     name,

@@ -614,7 +614,6 @@ impl<'a> Application for Model<'a> {
     fn update(&mut self, message: Message) -> Command<Message> {
         info!("Message:{:?}", message);
         info!("current: {:?}", &self.current);
-        let mut next_current: Option<(AssistantName, String)> = None;
         let command = match message {
             Message::Connected(Ok(ctx)) => {
                 info!("Connected: {:?}", &ctx);

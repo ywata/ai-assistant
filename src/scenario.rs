@@ -23,6 +23,7 @@ pub enum StateTrans {
     #[default]
     Stop,
     Next {
+        auto: Option<u8>,
         name: Name,
         tag: Tag,
     },

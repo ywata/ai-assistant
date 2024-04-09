@@ -2,6 +2,7 @@ use crate::response_content::get_content;
 use crate::response_content::Mark;
 use crate::scenario::Prompt;
 use crate::scenario::Renderer;
+use crate::scenario::StateTrans;
 use crate::scenario::Workflow;
 use crate::scenario::{get_item, Input};
 use crate::scenario::{parse_scenario, Item};
@@ -480,6 +481,63 @@ fn set_editor_contents(area: &mut Vec<EditArea>, idx: AreaIndex, text: &str) {
     };
 }
 
+fn get_next<'a>(
+    wf: &Workflow<RenderingContext<'a>, String, Request, Response>,
+    name: &AssistantName,
+    tag: &Tag,
+) -> Option<(AssistantName, Tag)> {
+    let opt = wf
+        .get(&name.clone())
+        .map(|hm| hm.get(&tag.clone()))
+        .flatten()
+        .map(|item| match &item.next {
+            StateTrans::Next {
+                auto: Some(_),
+                name,
+                tag,
+            } => Some((name.clone(), tag.clone())),
+            _ => None,
+        })
+        .flatten();
+    opt
+}
+
+fn dec_auto<'a>(
+    wf: &mut Workflow<RenderingContext<'a>, String, Request, Response>,
+    name: &AssistantName,
+    tag: &Tag,
+) {
+    let opt_item = wf
+        .get_mut(&name.clone())
+        .map(|hm| hm.get_mut(&tag.clone()))
+        .flatten()
+        .map(|item| {
+            let update = match &item.next {
+                StateTrans::Stop => StateTrans::Stop,
+                StateTrans::Next { auto: Some(0), .. } => StateTrans::Stop,
+                StateTrans::Next {
+                    auto: Some(k),
+                    name,
+                    tag,
+                } => StateTrans::Next {
+                    auto: Some(k - 1),
+                    name: name.to_string(),
+                    tag: tag.to_string(),
+                },
+                StateTrans::Next {
+                    auto: None,
+                    name,
+                    tag,
+                } => StateTrans::Next {
+                    auto: None,
+                    name: name.to_string(),
+                    tag: tag.to_string(),
+                },
+            };
+            item.next = update;
+        });
+}
+
 impl<'a> Application for Model<'a> {
     type Message = Message;
     type Theme = Theme;
@@ -611,6 +669,7 @@ impl<'a> Application for Model<'a> {
                             message: Content::Text(input.clone()),
                         },
                     );
+                    set_editor_contents(&mut self.edit_areas, AreaIndex::Result, "");
 
                     Command::perform(ask(context, name, tag, input), move |answer| {
                         Message::Answered { answer }
@@ -648,9 +707,20 @@ impl<'a> Application for Model<'a> {
 
                     set_editor_contents(&mut self.edit_areas, AreaIndex::Result, &response_text);
                     debug!("response_text:{:?}", response_text);
+                    dec_auto(&mut self.workflow, &name, &tag);
+                    if let Some((next, tag)) = get_next(&self.workflow, &name, &tag) {
+                        Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
+                            Message::LoadInput {
+                                name: name.clone(),
+                                tag: tag.clone(),
+                            }
+                        })
+                    } else {
+                        Command::none()
+                    }
+                } else {
+                    Command::none()
                 }
-
-                Command::none()
             }
             Message::Answered { answer: Err(_), .. } => {
                 error!("FAILED");

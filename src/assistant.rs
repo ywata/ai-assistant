@@ -533,6 +533,7 @@ fn dec_auto<'a>(
                     name: name.to_string(),
                     tag: tag.to_string(),
                 },
+                otherwise => otherwise.clone(),
             };
             item.next = update;
         });
@@ -966,6 +967,10 @@ queen:
       text: input for queen_q1
     q2:
       text: input for queen_q2
+    q3:
+      text: input for queen_q3
+    q4:
+      text: input for queen_q4
         "#;
         let prompts: HashMap<String, Box<Prompt>> = read_config(None, &prompt_str).unwrap();
         let workflow_str = r#"
@@ -977,7 +982,9 @@ queen:
       response:
         name: sdfg
     k2:
-      next: !Stop
+      next: !Next
+        name: queen
+        tag: q1
       request:
         name: asdf
       response:
@@ -990,11 +997,31 @@ queen:
       response:
         name: adsf
     q2:
-      next: !Stop
+      next: !Next
+        name: king
+        tag: k1
       request:
         name: adsf
       response:
         name: asdf
+    q3:
+      next: !Wait
+        name: king
+        tag: k1
+      request:
+        name: adsf
+      response:
+        name: asdf
+    q4:
+      next: !Next
+        auto: 5
+        name: king
+        tag: k1
+      request:
+        name: adsf
+      response:
+        name: asdf
+
         "#;
         let wf: Workflow<&Vec<Talk>, String, T, T> = read_config(None, &workflow_str).unwrap();
         let parsed = parse_scenario(prompts, wf);

@@ -27,6 +27,10 @@ pub enum StateTrans {
         name: Name,
         tag: Tag,
     },
+    Wait {
+        name: Name,
+        tag: Tag,
+    },
 }
 
 pub trait Renderer<S, T> {

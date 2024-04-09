@@ -650,12 +650,14 @@ impl<'a> Application for Model<'a> {
                             message: Content::Text(input_displayed),
                         },
                     );
-
-                    self.current.0 = name;
-                    self.current.1 = tag;
+                    self.current = (name.clone(), tag.clone());
+                    Command::perform(query_ai(name, tag), |pair| Message::QueryAi {
+                        name: pair.0,
+                        tag: pair.1,
+                    })
+                } else {
+                    Command::none()
                 }
-
-                Command::none()
             }
 
             Message::QueryAi { name, tag } => {
@@ -781,6 +783,10 @@ impl<'a> Application for Model<'a> {
 }
 
 async fn load_input(p0: String, p1: String) -> (String, String) {
+    (p0, p1)
+}
+
+async fn query_ai(p0: String, p1: String) -> (String, String) {
     (p0, p1)
 }
 

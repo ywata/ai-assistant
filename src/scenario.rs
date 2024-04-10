@@ -1,5 +1,5 @@
 use log::debug;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::marker::PhantomData;

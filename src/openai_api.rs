@@ -99,9 +99,6 @@ impl Context {
             assistants: HashMap::new(),
         }
     }
-    pub fn client(self) -> CClient {
-        self.client
-    }
     pub fn add_assistant(&mut self, name: &String, assistant: Assistant) {
         self.assistants.insert(name.clone(), assistant);
     }

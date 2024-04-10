@@ -281,7 +281,7 @@ struct Response {
 type RenderingContext<'a> = (&'a Handlebars<'a>, &'a Vec<Talk>, &'a String, &'a Input);
 impl<'a> Renderer<RenderingContext<'a>, String> for Request {
     fn render(&self, talks: RenderingContext) -> String {
-        let (hb, t, s, i) = talks;
+        let (hb, t, _s, i) = talks;
         let mut data = BTreeMap::new();
         data.insert(
             "prefix".to_string(),
@@ -492,16 +492,10 @@ fn get_next<'a>(
         .flatten()
         .map(|item| match &item.next {
             StateTrans::Next {
-                auto: Some(k),
+                auto: Some(_k),
                 name,
                 tag,
-            } => {
-                if *k >= 0 {
-                    Some((name.clone(), tag.clone()))
-                } else {
-                    None
-                }
-            }
+            } => Some((name.clone(), tag.clone())),
             _ => None,
         })
         .flatten();
@@ -513,7 +507,7 @@ fn dec_auto<'a>(
     name: &AssistantName,
     tag: &Tag,
 ) {
-    let opt_item = wf
+    let _ = wf
         .get_mut(&name.clone())
         .map(|hm| hm.get_mut(&tag.clone()))
         .flatten()
@@ -584,9 +578,9 @@ impl<'a> Application for Model<'a> {
         let client = create_opeai_client(&flags.1);
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
         // Initialize EditArea with loaded input.
-        let mut commands: Vec<Command<Message>> = vec![
+        let commands: Vec<Command<Message>> = vec![
             // To triger initial sreen
-            Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
+            Command::perform(next_state(name.clone(), tag.clone()), |(name, tag)| {
                 Message::LoadInput { name, tag }
             }),
             Command::perform(
@@ -666,7 +660,7 @@ impl<'a> Application for Model<'a> {
                         },
                     );
                     self.current = (name.clone(), tag.clone());
-                    Command::perform(query_ai(name, tag), |pair| Message::QueryAi {
+                    Command::perform(next_state(name, tag), |pair| Message::QueryAi {
                         name: pair.0,
                         tag: pair.1,
                     })
@@ -727,7 +721,7 @@ impl<'a> Application for Model<'a> {
                     dec_auto(&mut self.workflow, &name, &tag);
                     if let Some((name, tag)) = get_next(&self.workflow, &name, &tag) {
                         info!("Answered: ({:?},{:?})", &name, &tag);
-                        Command::perform(load_input(name.clone(), tag.clone()), |(name, tag)| {
+                        Command::perform(next_state(name.clone(), tag.clone()), |(name, tag)| {
                             Message::LoadInput {
                                 name: name.clone(),
                                 tag: tag.clone(),
@@ -797,11 +791,7 @@ impl<'a> Application for Model<'a> {
     }
 }
 
-async fn load_input(p0: String, p1: String) -> (String, String) {
-    (p0, p1)
-}
-
-async fn query_ai(p0: String, p1: String) -> (String, String) {
+async fn next_state(p0: String, p1: String) -> (String, String) {
     (p0, p1)
 }
 
@@ -838,7 +828,7 @@ fn list_inputs(prompts: &HashMap<String, Box<Prompt>>) -> Vec<(String, String)> 
             p.clone()
                 .inputs
                 .into_iter()
-                .map(|(t, i)| (n.clone(), t.clone()))
+                .map(|(t, _i)| (n.clone(), t.clone()))
         })
         .flatten()
         .collect()
@@ -911,9 +901,7 @@ mod test {
     }
 
     #[derive(Clone, Debug, Default, Deserialize)]
-    struct T {
-        name: String,
-    }
+    struct T {}
     impl Renderer<&Vec<Talk>, String> for T {
         fn render(&self, _talks: &Vec<Talk>) -> String {
             "".to_string()
@@ -922,8 +910,6 @@ mod test {
     #[derive(Clone, Debug, Deserialize)]
     enum S {
         S1,
-        S2(String),
-        S3 { name: String },
     }
     impl Renderer<&Vec<Talk>, String> for S {
         fn render(&self, _talks: &Vec<Talk>) -> String {

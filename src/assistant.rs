@@ -591,7 +591,8 @@ impl<'a> Application for Model<'a> {
         let client = create_opeai_client(&flags.1);
         let assistant_names = flags.2.keys().cloned().collect::<Vec<_>>();
         // Initialize EditArea with loaded input.
-        let commands: Vec<Command<Message>> = vec![
+        // To allow font loading the variable is mutable
+        let mut commands: Vec<Command<Message>> = vec![
             // To triger initial sreen
             Command::perform(next_state(name.clone(), tag.clone()), |(name, tag)| {
                 Message::LoadInput { name, tag }

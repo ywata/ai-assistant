@@ -22,9 +22,11 @@ use std::{fs, io};
 use regex::Regex;
 use std::process::Output;
 
+use iced::widget::text_editor::Action;
 use iced::widget::{
     self, checkbox, column, horizontal_space, row, text_editor, Button, Column, Text,
 };
+
 use iced::{font, Alignment, Application, Command, Element, Settings, Theme};
 
 use thiserror::Error;
@@ -159,6 +161,8 @@ enum Message {
     Answered {
         answer: Result<(String, String, String), (String, OpenAIApiError)>,
     },
+
+    ActionPerformed((AreaIndex, text_editor::Action)),
     SaveConversation {
         outut_dir: String,
     },
@@ -172,6 +176,7 @@ struct EditArea {
     content: text_editor::Content,
     is_dirty: bool,
     is_loading: bool,
+    is_editable: bool,
 }
 
 impl Default for EditArea {
@@ -180,6 +185,7 @@ impl Default for EditArea {
             content: text_editor::Content::new(),
             is_dirty: false,
             is_loading: false,
+            is_editable: false,
         }
     }
 }
@@ -502,6 +508,13 @@ fn get_next<'a>(
     opt
 }
 
+fn is_editable_state<'a>(item: &Item<RenderingContext<'a>, String, Request, Response>) -> bool {
+    match item.next {
+        StateTrans::Wait { .. } => true,
+        _ => false,
+    }
+}
+
 fn dec_auto<'a>(
     wf: &mut Workflow<RenderingContext<'a>, String, Request, Response>,
     name: &AssistantName,
@@ -651,6 +664,8 @@ impl<'a> Application for Model<'a> {
                     ));
                     self.edit_areas[AreaIndex::Input as usize].content =
                         text_editor::Content::with_text(&input_displayed);
+                    self.edit_areas[AreaIndex::Input as usize].is_editable =
+                        is_editable_state(&item);
                     push_talk(
                         &mut self.conversations,
                         Talk::ToAi {
@@ -738,6 +753,20 @@ impl<'a> Application for Model<'a> {
                 error!("FAILED");
                 Command::none()
             }
+            Message::ActionPerformed((index, action)) => {
+                if let Some(edit_area) = self.edit_areas.get_mut(index as usize) {
+                    debug!("{:?} {:?}", index, action);
+
+                    if edit_area.is_editable {
+                        self.edit_areas
+                            .get_mut(index as usize)
+                            .unwrap()
+                            .content
+                            .perform(action);
+                    }
+                }
+                Command::none()
+            }
 
             Message::SaveConversation { outut_dir } => {
                 let convs = self.conversations.clone();
@@ -779,9 +808,10 @@ impl<'a> Application for Model<'a> {
                 .width(iced::Length::Fill),
             ],
             row![
-                column![text_editor(
-                    &vec.get(AreaIndex::Input as usize).unwrap().content
-                ),],
+                column![
+                    text_editor(&vec.get(AreaIndex::Input as usize).unwrap().content)
+                        .on_action(|action| Message::ActionPerformed((AreaIndex::Input, action))),
+                ],
                 column![text_editor(
                     &vec.get(AreaIndex::Result as usize).unwrap().content
                 )],

@@ -46,6 +46,7 @@ where
 {
     pub _s: PhantomData<S>,
     pub _t: PhantomData<T>,
+    pub start: Option<bool>,
     pub next: StateTrans,
     pub request: Box<I>,
     pub response: Box<O>,
@@ -65,11 +66,13 @@ where
     {
         #[derive(Debug, Clone, Deserialize)]
         struct Inner<I, O> {
+            start: Option<bool>,
             next: StateTrans,
             request: I,
             response: O,
         }
         let Inner {
+            start,
             next,
             request,
             response,
@@ -77,6 +80,7 @@ where
         Ok(Item {
             _s: PhantomData,
             _t: PhantomData,
+            start,
             next,
             request,
             response,
@@ -93,6 +97,7 @@ where
         Item {
             _s: PhantomData,
             _t: PhantomData,
+            start: self.start.clone(),
             next: self.next.clone(),
             request: self.request.clone(),
             response: self.response.clone(),
@@ -101,6 +106,27 @@ where
 }
 
 pub type Workflow<S, T, I, O> = HashMap<String, HashMap<String, Item<S, T, I, O>>>;
+
+pub fn find_start_items<S, T, I, O>(wf: &Workflow<S, T, I, O>) -> Vec<(Name, Tag)>
+where
+    S: Debug,
+    T: Debug,
+    I: Renderer<S, T> + Clone + Debug,
+    O: Renderer<S, T> + Clone + Debug,
+{
+    let mut res: Vec<(Name, Tag)> = Vec::new();
+
+    for (name, hm) in wf.iter() {
+        for (tag, item) in hm.iter() {
+            if let Some(start) = item.start {
+                if start {
+                    res.push((name.clone(), tag.clone()))
+                }
+            }
+        }
+    }
+    res
+}
 
 pub fn parse_scenario<S, T, I, O>(
     prompts: HashMap<String, Box<Prompt>>,
@@ -115,6 +141,7 @@ where
     if prompts.is_empty() {
         return None;
     }
+
     let prompt_pairs: HashSet<(String, String)> = prompts
         .iter()
         .map(|(n, p)| p.inputs.iter().map(|(t, _i)| (n.clone(), t.clone())))

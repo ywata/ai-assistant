@@ -1,9 +1,9 @@
 use crate::response_content::get_content;
 use crate::response_content::Mark;
-use crate::scenario::Prompt;
 use crate::scenario::Renderer;
 use crate::scenario::StateTrans;
 use crate::scenario::Workflow;
+use crate::scenario::{find_start_items, Prompt};
 use crate::scenario::{get_item, Input};
 use crate::scenario::{parse_scenario, Item};
 use log::warn;
@@ -60,10 +60,6 @@ struct Cli {
     #[arg(long)]
     prompt_file: String,
     #[arg(long)]
-    prompt_name: String,
-    #[arg(long)]
-    prompt_tag: String,
-    #[arg(long)]
     workflow_file: Option<String>,
     #[arg(long)]
     output_dir: String,
@@ -104,8 +100,6 @@ impl Default for Cli {
             config_file: "service.yaml".to_string(),
             config_key: "openai".to_string(),
             prompt_file: "prompt.txt".to_string(),
-            prompt_name: "".to_string(),
-            prompt_tag: "".to_string(),
             workflow_file: None,
             output_dir: "output".to_string(),
             command: Commands::default(),
@@ -131,11 +125,13 @@ pub fn main() -> Result<(), AssistantError> {
     };
 
     if let Some((prompts, workflow)) = parse_scenario(*prompt_hash, wf) {
+        //parse_scenario() assures validity of unwrap() below
+        let (name, tag) = find_start_items(&workflow).get(0).unwrap().clone();
         let workflow = load_template(workflow).unwrap();
         debug!("{:?}", workflow);
         let client: Option<CClient> = config.create_client();
         let settings_default = Settings {
-            flags: (args.clone(), config, prompts, workflow, client),
+            flags: (args.clone(), config, prompts, workflow, client, (name, tag)),
             ..Default::default()
         };
 
@@ -570,12 +566,12 @@ impl<'a> Application for Model<'a> {
         HashMap<String, Box<Prompt>>,
         Workflow<RenderingContext<'a>, String, Request, Response>,
         Option<CClient>,
+        (AssistantName, Tag),
     );
 
     fn new(flags: <Model<'a> as iced::Application>::Flags) -> (Model<'a>, Command<Message>) {
-        let name = flags.0.prompt_name.clone();
-        let tag = flags.0.prompt_tag.clone();
         let workflow = flags.3;
+        let (name, tag) = flags.5;
         let prompt = EditArea::default();
         let input = EditArea::default();
         let result = EditArea::default();
@@ -978,6 +974,7 @@ mod test {
         assert_eq!(wf.len(), 2);
         assert_eq!(wf.get("king").unwrap().len(), 1);
     }
+
     #[test]
     fn test_parse_scenario() {
         let prompt_str = r#"

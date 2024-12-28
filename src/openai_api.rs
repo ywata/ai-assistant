@@ -172,7 +172,7 @@ pub async fn ask(
 
         //create a message for the thread
         let message = CreateMessageRequestArgs::default()
-            .role("user")
+            //.role("user")
             .content(input.clone())
             .build()
             .map_err(|e| (name.clone(), e.into()))?;
@@ -238,8 +238,8 @@ pub async fn ask(
                     //get the text from the content
                     let text = match content {
                         MessageContent::Text(text) => text.text.value.clone(),
-                        MessageContent::ImageFile(_) => {
-                            panic!("imaged are not supported in the terminal")
+                        _ => {
+                            panic!("non text messages are supported in the terminal")
                         }
                     };
                     //print the text
